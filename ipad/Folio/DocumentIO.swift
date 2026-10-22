@@ -15,12 +15,13 @@ enum DocumentIO {
             let parts = entry.path.split(separator: "/", omittingEmptySubsequences: false)
             guard !entry.path.hasPrefix("/"), !entry.path.contains("\\"), !entry.path.contains(":"), !parts.contains(".."), entry.type != .symlink,
                   paths.insert(entry.path).inserted else { throw FolioError.invalidDocument("небезопасный путь в архиве") }
-            total += UInt64(entry.uncompressedSize)
-            guard total <= maxBytes, paths.count < 10000 else { throw FolioError.tooLarge }
+            let (next,overflow)=total.addingReportingOverflow(UInt64(entry.uncompressedSize)); total=next
+            guard !overflow, total <= maxBytes, paths.count < 10000 else { throw FolioError.tooLarge }
             let destination = directory.appendingPathComponent(entry.path)
             guard destination.standardizedFileURL.path.hasPrefix(directory.standardizedFileURL.path + "/") else { throw FolioError.invalidDocument("неверный путь") }
             try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-            _ = try archive.extract(entry, to: destination)
+            let checksum = try archive.extract(entry, to: destination)
+            guard checksum == entry.checksum else { throw FolioError.invalidDocument("ошибка контрольной суммы архива") }
         }
     }
     static func zip(_ directory: URL, title: String) throws -> URL {

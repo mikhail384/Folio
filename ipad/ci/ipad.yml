@@ -1,0 +1,50 @@
+name: Folio iPad
+on:
+  workflow_dispatch:
+  push:
+    paths: ['ipad/**', '.github/workflows/ipad.yml']
+permissions:
+  contents: read
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate Xcode project
+        run: python3 ipad/scripts/project.py
+      - name: Xcode and SDK versions
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+      - name: Choose iPad simulator
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import sys,json; d=json.load(sys.stdin); print(next(v["udid"] for a in d["devices"].values() for v in a if "iPad Pro" in v["name"]))')
+          echo "IPAD_DEVICE=$DEVICE" >> "$GITHUB_ENV"
+      - name: Build and test on iPad simulator
+        run: >-
+          xcodebuild test -project ipad/Folio.xcodeproj -scheme Folio
+          -destination "id=$IPAD_DEVICE" -derivedDataPath build/ipad-simulator
+          -resultBundlePath build/Folio-iPad.xcresult
+          -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO
+      - name: Simulator screenshot
+        if: always()
+        run: xcrun simctl io "$IPAD_DEVICE" screenshot build/Folio-iPad-simulator.png || true
+      - name: Build unsigned iPad device app
+        run: >-
+          xcodebuild build -project ipad/Folio.xcodeproj -scheme Folio
+          -destination 'generic/platform=iOS' -configuration Release
+          -derivedDataPath build/ipad-device CODE_SIGNING_ALLOWED=NO
+      - name: Package device app
+        run: |
+          cd build/ipad-device/Build/Products/Release-iphoneos
+          ditto -c -k --sequesterRsrc --keepParent Folio.app ../../../../Folio-iPad-unsigned.app.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Folio-iPad-build
+          path: |
+            build/Folio-iPad-unsigned.app.zip
+            build/Folio-iPad-simulator.png
+            build/Folio-iPad.xcresult
+          retention-days: 14

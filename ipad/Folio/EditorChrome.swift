@@ -82,7 +82,8 @@ extension EditorController {
         }
     }
     func select(_ next:FolioTool) {
-        if tool != .eraser && next == .eraser { previousTool=tool }
+        if tool != .eraser && next == .eraser { eraserReturnTool=tool }
+        if tool != next { previousTool=tool }
         tool=next; dismissFloating(); applyTool(); refreshChrome(); UISelectionFeedbackGenerator().selectionChanged()
     }
     func applyTool() {

@@ -46,7 +46,11 @@ struct WorkshopView: View {
                     ForEach(preferences.tools) { tool in Label(tool.title,systemImage:tool.symbol) }
                         .onMove { preferences.tools.move(fromOffsets:$0,toOffset:$1) }
                         .onDelete { offsets in if preferences.tools.count-offsets.count >= 1 { preferences.tools.remove(atOffsets:offsets) } }
-                    Menu("Добавить инструмент",systemImage:"plus") { ForEach(FolioTool.allCases.filter { !preferences.tools.contains($0) }) { tool in Button(tool.title,systemImage:tool.symbol) { preferences.tools.append(tool) } }
+                    Menu("Добавить инструмент",systemImage:"plus") {
+                        ForEach(FolioTool.allCases.filter { !preferences.tools.contains($0) }) { tool in
+                            Button(tool.title,systemImage:tool.symbol) { preferences.tools.append(tool) }
+                        }
+                    }
                 }
                 PaperSettingsView(paper:$preferences.defaultPaper)
                 Section {
@@ -58,7 +62,7 @@ struct WorkshopView: View {
             .onChange(of:preferencesData) { _,_ in store.preferences=preferences; store.savePreferences() }
         }.presentationDetents([.large]).presentationCornerRadius(28)
     }
-    var preferencesData: Data { (try? JSONEncoder().encode(preferences)) ?? Data() }
+    var preferencesData: Data { let encoder=JSONEncoder(); encoder.outputFormatting = .sortedKeys; return (try? encoder.encode(preferences)) ?? Data() }
 }
 
 struct ToolSettingsView: View {

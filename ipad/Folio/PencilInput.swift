@@ -12,7 +12,7 @@ extension EditorController {
     func pencilInteractionDidTap(_ interaction:UIPencilInteraction) { perform(store.preferences.doubleTap,isSqueeze:false) }
     @available(iOS 17.5, *)
     func pencilInteraction(_ interaction:UIPencilInteraction,didReceiveTap tap:UIPencilInteraction.Tap) {
-        if tap.phase == .ended { if let pose=tap.hoverPose { hoveredPoint=pose.location }; perform(store.preferences.doubleTap,isSqueeze:false) }
+        if let pose=tap.hoverPose { hoveredPoint=pose.location }; perform(store.preferences.doubleTap,isSqueeze:false)
     }
     @available(iOS 17.5, *)
     func pencilInteraction(_ interaction:UIPencilInteraction,didReceiveSqueeze squeeze:UIPencilInteraction.Squeeze) {
@@ -34,7 +34,7 @@ extension EditorController {
             }
         }
         switch effective {
-        case .eraser: select(tool == .eraser ? previousTool:.eraser)
+        case .eraser: select(tool == .eraser ? eraserReturnTool:.eraser)
         case .nextTool:
             let tools=store.preferences.tools.filter { $0 != .hand && $0 != .lasso }
             if !tools.isEmpty { select(tools[((tools.firstIndex(of:tool) ?? -1)+1)%tools.count]) }

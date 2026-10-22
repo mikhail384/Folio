@@ -14,7 +14,8 @@ final class EditorController:UIViewController, PKCanvasViewDelegate, UIGestureRe
     var beforeStroke=PKDrawing()
     var tool=FolioTool.pen
     var previousTool=FolioTool.pen
-    let canvas=PKCanvasView()
+    var eraserReturnTool=FolioTool.pen
+    let canvas=FolioCanvas()
     let paper=PaperView()
     let top=UIStackView()
     let strip=UIStackView()
@@ -176,6 +177,11 @@ final class EditorController:UIViewController, PKCanvasViewDelegate, UIGestureRe
         }
     }
     func gestureRecognizer(_ gestureRecognizer:UIGestureRecognizer,shouldRecognizeSimultaneouslyWith otherGestureRecognizer:UIGestureRecognizer)->Bool { true }
+}
+
+/// History is owned by the document so coordinate expansion can also transform undo/redo snapshots.
+final class FolioCanvas:PKCanvasView {
+    override var undoManager:UndoManager? { nil }
 }
 
 final class InkTracker:UIGestureRecognizer {
