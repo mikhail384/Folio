@@ -17,6 +17,10 @@ checksum=hashlib.sha256(target.read_bytes()).hexdigest()
 (ROOT/'dist/Folio-iPad-source.zip.sha256').write_text(checksum+'  Folio-iPad-source.zip\n',encoding='ascii')
 report={'version':'0.1.0','artifact':'Folio-iPad-source.zip','sha256':checksum,'files':len(files),'sourceArchiveVerified':True,
         'localChecks':['project structure','Info.plist and shared scheme','all Swift grammar parsed','ZIP integrity'],
-        'xcodeBuild':'not run: GitHub workflow permission required','simulatorTests':'not run','physicalDevice':'not tested','installable':False}
+        'xcodeBuild':'unverified: a completed build receipt is required','simulatorTests':'unverified','physicalDevice':'not tested','installable':False}
+verified=ROOT/'dist/Folio-iPad-build-checks.json'
+if verified.exists():
+    build=json.loads(verified.read_text(encoding='utf-8'))
+    report.update(xcodeBuild=build.get('xcodeBuild','unknown'),simulatorTests=build.get('simulatorTests','unknown'),buildReport='Folio-iPad-build-checks.json',installable=False)
 (ROOT/'dist/Folio-iPad-status.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 print(json.dumps({'artifact':str(target),'sha256':checksum,'files':len(files)}))
