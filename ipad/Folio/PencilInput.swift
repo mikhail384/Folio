@@ -170,6 +170,7 @@ final class RadialPalette:UIView {
             let angle=CGFloat(i)*2 * .pi/CGFloat(max(items.count,1)) - .pi/2
             let button=UIButton(type:.custom); button.frame=CGRect(x:128+cos(angle)*111,y:128+sin(angle)*111,width:54,height:54)
             button.layer.cornerRadius=27; button.layer.borderWidth=tool == selected ? 2:0; button.layer.borderColor=FolioTheme.accent.cgColor
+            button.tag=tool == selected ? 2:0; button.accessibilityTraits=tool == selected ? [.button,.selected]:[.button]
             button.backgroundColor=tool == selected ? FolioTheme.accent.withAlphaComponent(0.1):.clear
             let glyph=ToolGlyph(tool:tool,color:preferences.style(for:tool).color); glyph.frame=button.bounds.offsetBy(dx:0,dy:tool == selected ? -3:0); button.addSubview(glyph)
             button.accessibilityLabel=tool.title; button.addAction(UIAction { _ in self.selectTool?(tool) },for:.touchUpInside)
@@ -179,6 +180,7 @@ final class RadialPalette:UIView {
         for i in 0..<3 {
             let button=UIButton(type:.custom); button.frame=CGRect(x:98+CGFloat(i)*42,y:126,width:30,height:30); button.layer.cornerRadius=15
             button.backgroundColor=style.colors[i].ui; button.layer.borderWidth=i == style.selected ? 3:1; button.layer.borderColor=(i == style.selected ? FolioTheme.accent:UIColor.white).cgColor
+            button.tag=i == style.selected ? 3:1
             button.alpha=selected.hasColor ? 1:0.25; button.isEnabled=selected.hasColor; button.accessibilityLabel="Цвет \(i+1)"
             button.addAction(UIAction { _ in self.selectColor?(i) },for:.touchUpInside)
             let hover=UIHoverGestureRecognizer(target:self,action:#selector(highlight(_:))); button.addGestureRecognizer(hover); disk.addSubview(button)
@@ -190,6 +192,6 @@ final class RadialPalette:UIView {
     @objc func outside(_ tap:UITapGestureRecognizer) { if !disk.frame.contains(tap.location(in:self)) { close?() } }
     @objc func highlight(_ hover:UIHoverGestureRecognizer) {
         guard let button=hover.view else { return }; let active=hover.state != .ended && hover.state != .cancelled
-        FolioTheme.animate { button.transform=active ? CGAffineTransform(translationX:0,y:-4).scaledBy(x:1.08,y:1.08):.identity; button.layer.borderWidth=active ? 2:0; button.layer.borderColor=FolioTheme.accent.cgColor }
+        FolioTheme.animate { button.transform=active ? CGAffineTransform(translationX:0,y:-4).scaledBy(x:1.08,y:1.08):.identity; button.layer.borderWidth=active ? 2:CGFloat(button.tag); button.layer.borderColor=(active || button.tag>1 ? FolioTheme.accent:UIColor.white).cgColor }
     }
 }

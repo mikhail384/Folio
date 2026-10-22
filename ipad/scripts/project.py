@@ -48,6 +48,7 @@ for name, sources, test_type in [('Folio', app_sources, None), ('FolioTests', te
             'DEBUG_INFORMATION_FORMAT': 'dwarf' if config == 'Debug' else 'dwarf-with-dsym',
             'SWIFT_ACTIVE_COMPILATION_CONDITIONS': 'DEBUG' if config == 'Debug' else '',
             'ENABLE_TESTABILITY': 'YES' if config == 'Debug' else 'NO',
+            'ONLY_ACTIVE_ARCH': 'YES' if config == 'Debug' else 'NO',
             'SUPPORTED_PLATFORMS': 'iphoneos iphonesimulator', 'SUPPORTS_MACCATALYST': 'NO',
         }
         if not test_type:
