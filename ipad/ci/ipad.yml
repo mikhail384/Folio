@@ -2,7 +2,7 @@ name: Folio iPad
 on:
   workflow_dispatch:
   push:
-    paths: ['ipad/**', '.github/workflows/ipad.yml']
+    paths: ['ipad/Folio/**', 'ipad/FolioTests/**', 'ipad/FolioUITests/**', 'ipad/scripts/project.py', '.github/workflows/ipad.yml']
 permissions:
   contents: read
 jobs:

@@ -48,7 +48,8 @@ final class FolioTests:XCTestCase {
         XCTAssertEqual(history.redo(a)?.strokes.first?.path.first?.location,b.strokes.first?.path.first?.location)
         history.translate(CGAffineTransform(translationX:8192,y:0))
         let result=history.undo(c)
-        XCTAssertEqual(result?.strokes.first?.transform.tx,8192)
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result!.bounds.minX,a.bounds.minX+8192,accuracy:0.01)
         history.record(c); XCTAssertTrue(history.future.isEmpty)
         for _ in 0..<60 { history.record(a) }; XCTAssertEqual(history.past.count,40)
     }
@@ -87,7 +88,7 @@ final class FolioTests:XCTestCase {
     func testZipTraversalRejectedBeforeWritingOutsideDestination() throws {
         let zip=root.appendingPathComponent("bad.zip"),outside=root.appendingPathComponent("outside")
         let archive=try Archive(url:zip,accessMode:.create)
-        try archive.addEntry(with:"../outside",type:.file,uncompressedSize:UInt64(1),provider:{ _,_ in Data([65]) })
+        try archive.addEntry(with:"../outside",type:.file,uncompressedSize:Int64(1),provider:{ _,_ in Data([65]) })
         XCTAssertThrowsError(try DocumentIO.extract(zip,to:root.appendingPathComponent("extracted")))
         XCTAssertFalse(FileManager.default.fileExists(atPath:outside.path))
     }
