@@ -1,5 +1,6 @@
 import XCTest
 import PencilKit
+import UIKit
 import ZIPFoundation
 @testable import Folio
 
@@ -73,6 +74,19 @@ final class FolioTests:XCTestCase {
         try archive.addEntry(with:"../outside",type:.file,uncompressedSize:1,provider:{ _,_ in Data([65]) })
         XCTAssertThrowsError(try DocumentIO.extract(zip,to:root.appendingPathComponent("extracted")))
         XCTAssertFalse(FileManager.default.fileExists(atPath:outside.path))
+    }
+    func testSmallImageNotebookArchiveCanReopen() throws {
+        let url=root.appendingPathComponent("small.png")
+        let image=UIGraphicsImageRenderer(size:CGSize(width:32,height:24)).image { c in UIColor.red.setFill(); c.cgContext.fill(CGRect(x:0,y:0,width:32,height:24)) }
+        try XCTUnwrap(image.pngData()).write(to:url)
+        let note=try DocumentIO.imported(url,store:store)
+        let zip=try DocumentIO.zip(store.directory(note.id),title:note.title)
+        defer { try? FileManager.default.removeItem(at:zip) }
+        let copy=try DocumentIO.imported(zip,store:store)
+        XCTAssertEqual(copy.pages[0].paper.width,32)
+        XCTAssertEqual(copy.pages[0].paper.height,24)
+        XCTAssertNotNil(copy.pages[0].backgroundFile)
+        XCTAssertNoThrow(try store.read(copy.id))
     }
     func testAndroidPressureGeometryAndOverlappingCuts() throws {
         let temp=root.appendingPathComponent("android"); try FileManager.default.createDirectory(at:temp,withIntermediateDirectories:true)

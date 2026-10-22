@@ -43,7 +43,8 @@ enum DocumentIO {
             let data = try Data(contentsOf: manifest)
             guard data.count <= 8 * 1024 * 1024 else { throw FolioError.tooLarge }
             var note = try JSONDecoder().decode(Notebook.self, from: data)
-            guard note.version == 1, !note.pages.isEmpty, note.pages.count <= 2000 else { throw FolioError.invalidDocument("неподдерживаемый формат") }
+            guard note.version == 1, !note.pages.isEmpty, note.pages.count <= 2000,
+                  Set(note.pages.map(\.id)).count == note.pages.count else { throw FolioError.invalidDocument("неподдерживаемый формат или повторяющиеся страницы") }
             var drawings: [UUID: PKDrawing] = [:]
             for page in note.pages {
                 guard store.safeFile(page.drawingFile), !page.drawingFile.isEmpty,
@@ -51,7 +52,7 @@ enum DocumentIO {
                       [page.canvasWidth, page.canvasHeight, page.originX, page.originY, page.viewportX, page.viewportY, page.zoom].allSatisfy({ $0.isFinite && abs($0) <= 10_000_000 }),
                       page.zoom > 0, page.canvasWidth > 0, page.canvasHeight > 0,
                       page.paper.width.isFinite, page.paper.height.isFinite,
-                      (100...20000).contains(page.paper.width), (100...20000).contains(page.paper.height) else { throw FolioError.invalidDocument("повреждённая страница") }
+                      (1...20000).contains(page.paper.width), (1...20000).contains(page.paper.height) else { throw FolioError.invalidDocument("повреждённая страница") }
                 drawings[page.id] = try PKDrawing(data: Data(contentsOf: temp.appendingPathComponent(page.drawingFile)))
                 if let background = page.backgroundFile, !store.safeFile(background) { throw FolioError.invalidDocument("путь изображения") }
             }
@@ -60,7 +61,11 @@ enum DocumentIO {
             note.current = min(max(note.current, 0), note.pages.count - 1)
             let dir = store.directory(note.id); try fm.createDirectory(at: dir, withIntermediateDirectories: true)
             do {
-                for page in note.pages { if let name = page.backgroundFile { try fm.copyItem(at: temp.appendingPathComponent(name), to: dir.appendingPathComponent(name)) } }
+                for page in note.pages {
+                    if let name = page.backgroundFile, !fm.fileExists(atPath:dir.appendingPathComponent(name).path) {
+                        try fm.copyItem(at:temp.appendingPathComponent(name),to:dir.appendingPathComponent(name))
+                    }
+                }
                 try store.persist(note, drawings: drawings)
             } catch { try? fm.removeItem(at: dir); throw error }
             return note
