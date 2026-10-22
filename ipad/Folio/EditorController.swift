@@ -140,14 +140,19 @@ final class EditorController:UIViewController, PKCanvasViewDelegate, UIGestureRe
     func canvasViewDidBeginUsingTool(_ canvasView:PKCanvasView) {
         canvas.layer.mask=nil; beforeStroke=canvas.drawing; interacting=true; dismissFloating()
     }
-    func canvasViewDrawingDidChange(_ canvasView:PKCanvasView) { if !loading && !interacting { scheduleSave() } }
+    func canvasViewDrawingDidChange(_ canvasView:PKCanvasView) {
+        if !loading && !interacting && canvas.drawing != beforeStroke {
+            history.record(beforeStroke); beforeStroke=canvas.drawing; scheduleSave(); refreshChrome()
+        }
+    }
     func canvasViewDidEndUsingTool(_ canvasView:PKCanvasView) {
-        history.record(beforeStroke); interacting=false; hoverLayer.path=nil
+        if canvas.drawing != beforeStroke { history.record(beforeStroke) }
+        beforeStroke=canvas.drawing; interacting=false; hoverLayer.path=nil
         scheduleSave(); expandCanvas(); refreshChrome()
     }
     @objc func twoFingerUndo() { undoInk() }
-    func undoInk() { guard !interacting,let drawing=history.undo(canvas.drawing) else { return }; loading=true; canvas.drawing=drawing; loading=false; scheduleSave(); refreshChrome() }
-    func redoInk() { guard !interacting,let drawing=history.redo(canvas.drawing) else { return }; loading=true; canvas.drawing=drawing; loading=false; scheduleSave(); refreshChrome() }
+    func undoInk() { guard !interacting,let drawing=history.undo(canvas.drawing) else { return }; loading=true; beforeStroke=drawing; canvas.drawing=drawing; loading=false; scheduleSave(); refreshChrome() }
+    func redoInk() { guard !interacting,let drawing=history.redo(canvas.drawing) else { return }; loading=true; beforeStroke=drawing; canvas.drawing=drawing; loading=false; scheduleSave(); refreshChrome() }
     func scheduleSave() {
         guard !loading,!closed else { return }; saving?.cancel(); status.text="Сохраняем…"
         let work=DispatchWorkItem { [weak self] in self?.flush() }; saving=work

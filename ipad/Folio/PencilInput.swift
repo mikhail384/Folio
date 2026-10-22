@@ -138,7 +138,7 @@ extension EditorController {
             } else if guide.compass && customPoints.count>1 && tool.hasColor {
                 let style=store.preferences.style(for:tool)
                 let stroke=StrokeFactory.stroke(points:customPoints.map(world),tool:tool,color:style.color,width:style.width)
-                history.record(beforeStroke); loading=true; canvas.drawing=PKDrawing(strokes:canvas.drawing.strokes+[stroke]); loading=false
+                history.record(beforeStroke); loading=true; canvas.drawing=PKDrawing(strokes:canvas.drawing.strokes+[stroke]); beforeStroke=canvas.drawing; loading=false
                 laserLayer.path=nil; scheduleSave(); refreshChrome()
             }
         }

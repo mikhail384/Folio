@@ -60,6 +60,22 @@ final class FolioTests:XCTestCase {
         XCTAssertEqual(decoded.squeeze,.undo); XCTAssertEqual(decoded.style(for:.pen).colors[0].argb,0xff123456)
         XCTAssertFalse(FolioTool.eraser.hasColor); XCTAssertEqual(FolioTool.pen.inkType,.monoline)
     }
+    @MainActor func testEditorUndoRedoSurvivesEmptyContact() throws {
+        let note=try store.create(title:"История")
+        let editor=EditorController(id:note.id,store:store,onClose:{})
+        editor.loadViewIfNeeded()
+        editor.canvasViewDidBeginUsingTool(editor.canvas)
+        editor.canvas.drawing=drawing()
+        editor.canvasViewDidEndUsingTool(editor.canvas)
+        XCTAssertEqual(editor.history.past.count,1)
+        editor.undoInk(); XCTAssertTrue(editor.canvas.drawing.strokes.isEmpty)
+        XCTAssertEqual(editor.history.future.count,1)
+        editor.canvasViewDidBeginUsingTool(editor.canvas)
+        editor.canvasViewDidEndUsingTool(editor.canvas)
+        XCTAssertEqual(editor.history.future.count,1)
+        editor.redoInk(); XCTAssertEqual(editor.canvas.drawing.strokes.count,1)
+        editor.saving?.cancel()
+    }
     func testNativeArchiveRoundTrip() throws {
         let note=try store.create(title:"Обмен")
         try store.persist(note,drawings:[note.pages[0].id:drawing()])
@@ -71,7 +87,7 @@ final class FolioTests:XCTestCase {
     func testZipTraversalRejectedBeforeWritingOutsideDestination() throws {
         let zip=root.appendingPathComponent("bad.zip"),outside=root.appendingPathComponent("outside")
         let archive=try Archive(url:zip,accessMode:.create)
-        try archive.addEntry(with:"../outside",type:.file,uncompressedSize:1,provider:{ _,_ in Data([65]) })
+        try archive.addEntry(with:"../outside",type:.file,uncompressedSize:UInt64(1),provider:{ _,_ in Data([65]) })
         XCTAssertThrowsError(try DocumentIO.extract(zip,to:root.appendingPathComponent("extracted")))
         XCTAssertFalse(FileManager.default.fileExists(atPath:outside.path))
     }

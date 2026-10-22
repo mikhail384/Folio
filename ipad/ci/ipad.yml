@@ -30,6 +30,9 @@ jobs:
       - name: Simulator screenshot
         if: always()
         run: xcrun simctl io "$IPAD_DEVICE" screenshot build/Folio-iPad-simulator.png || true
+      - name: Export UI screenshots
+        if: always()
+        run: xcrun xcresulttool export attachments --path build/Folio-iPad.xcresult --output-path build/ipad-screenshots || true
       - name: Build unsigned iPad device app
         run: >-
           xcodebuild build -project ipad/Folio.xcodeproj -scheme Folio
@@ -51,5 +54,6 @@ jobs:
             build/Folio-iPad-unsigned.app.zip
             build/Folio-iPad-unsigned.ipa
             build/Folio-iPad-simulator.png
+            build/ipad-screenshots
             build/Folio-iPad.xcresult
           retention-days: 14

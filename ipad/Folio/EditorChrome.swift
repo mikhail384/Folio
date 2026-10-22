@@ -166,7 +166,7 @@ extension EditorController {
             if p.paper.infinite != paper.infinite {
                 let dx:CGFloat=paper.infinite ? 4096:-CGFloat(p.originX),dy:CGFloat=paper.infinite ? 4096:-CGFloat(p.originY)
                 let transform=CGAffineTransform(translationX:dx,y:dy)
-                self.loading=true; self.canvas.drawing=self.canvas.drawing.transformed(using:transform); self.history.translate(transform); self.loading=false
+                self.loading=true; self.canvas.drawing=self.canvas.drawing.transformed(using:transform); self.beforeStroke=self.canvas.drawing; self.history.translate(transform); self.loading=false
                 p.originX+=Double(dx); p.originY+=Double(dy); p.viewportX=max(0,p.viewportX+Double(dx)); p.viewportY=max(0,p.viewportY+Double(dy))
             }
             p.paper=paper; self.page=p
