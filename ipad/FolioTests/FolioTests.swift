@@ -94,7 +94,8 @@ final class FolioTests:XCTestCase {
     }
     func testSmallImageNotebookArchiveCanReopen() throws {
         let url=root.appendingPathComponent("small.png")
-        let image=UIGraphicsImageRenderer(size:CGSize(width:32,height:24)).image { c in UIColor.red.setFill(); c.cgContext.fill(CGRect(x:0,y:0,width:32,height:24)) }
+        let format=UIGraphicsImageRendererFormat(); format.scale=1
+        let image=UIGraphicsImageRenderer(size:CGSize(width:32,height:24),format:format).image { c in UIColor.red.setFill(); c.cgContext.fill(CGRect(x:0,y:0,width:32,height:24)) }
         try XCTUnwrap(image.pngData()).write(to:url)
         let note=try DocumentIO.imported(url,store:store)
         let zip=try DocumentIO.zip(store.directory(note.id),title:note.title)
