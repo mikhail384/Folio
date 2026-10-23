@@ -21,6 +21,17 @@ report={'version':'0.1.0','artifact':'Folio-iPad-source.zip','sha256':checksum,'
 verified=ROOT/'dist/Folio-iPad-build-checks.json'
 if verified.exists():
     build=json.loads(verified.read_text(encoding='utf-8'))
-    report.update(xcodeBuild=build.get('xcodeBuild','unknown'),simulatorTests=build.get('simulatorTests','unknown'),buildReport='Folio-iPad-build-checks.json',installable=False)
+    hashes=build.get('sourceGitBlobHashes',{})
+    changed=[]
+    for relative,expected in hashes.items():
+        source=ROOT/relative
+        if not source.exists(): changed.append(relative);continue
+        data=source.read_bytes()
+        if source.suffix!='.png':data=data.replace(b'\r\n',b'\n')
+        digest=hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+        if digest!=expected:changed.append(relative)
+    if hashes and not changed:
+        report.update(xcodeBuild=build.get('xcodeBuild','unknown'),simulatorTests=build.get('simulatorTests','unknown'),buildReport='Folio-iPad-build-checks.json',installable=False)
+    else:report.update(unverifiedSourceChanges=changed,xcodeBuild='unverified: source differs from the recorded build')
 (ROOT/'dist/Folio-iPad-status.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 print(json.dumps({'artifact':str(target),'sha256':checksum,'files':len(files)}))
