@@ -26,7 +26,7 @@ export async function submit(env,session,id,envelope){if(!/^[a-f0-9-]{32,36}$/.t
  const existing=await env.DB.prepare('SELECT channel FROM folio_tasks WHERE id=?').bind(id).first();if(existing){if(existing.channel!==session.channel)throw new ApiError(409,'Request id already used');return {id};}
  const count=await env.DB.prepare('SELECT COUNT(*) AS n FROM folio_tasks WHERE channel=? AND state<2 AND expires>?').bind(session.channel,Date.now()).first();if(count.n>=4)throw new ApiError(429,'Холст занят. Дождитесь завершения предыдущей команды.');
  // Verify authenticity/route before queueing. Plaintext is not persisted.
- const plain=await open(session.key,envelope,'folio:'+id+':request');if(!['state','snapshot','selection','ink','undo'].includes(plain.route))throw new ApiError(400,'Unknown canvas operation');
+ const plain=await open(session.key,envelope,'folio:'+id+':request');if(!['state','snapshot','selection','ink','undo','notebooks','notebook_pages','notebook_scan','notebook_samples'].includes(plain.route))throw new ApiError(400,'Unknown canvas operation');
  await env.BUCKET.put(session.channel+'/'+id+'/request',JSON.stringify(envelope));await env.DB.prepare('INSERT INTO folio_tasks(id,channel,state,created,expires) VALUES(?,?,0,?,?)').bind(id,session.channel,Date.now(),Date.now()+45000).run();return {id};
 }
 export async function claim(env,session){await cleanup(env,session.channel);if(Date.now()-session.seen>5000){session.seen=Date.now();await env.DB.prepare('UPDATE folio_sessions SET seen=? WHERE channel=?').bind(session.seen,session.channel).run();}

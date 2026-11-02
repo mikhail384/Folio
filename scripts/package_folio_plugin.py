@@ -23,12 +23,12 @@ codex plugin add folio-canvas@folio-local
 :done
 pause
 '''
-    with zipfile.ZipFile(DIST/'Folio-Canvas-Plugin-0.2.0.zip','w',zipfile.ZIP_DEFLATED) as z:
+    with zipfile.ZipFile(DIST/'Folio-Canvas-Plugin-0.3.0.zip','w',zipfile.ZIP_DEFLATED) as z:
         for p in files:z.write(p,'Folio-Plugin/folio-plugin/'+p.relative_to(PLUGIN).as_posix())
         z.writestr('Folio-Plugin/.agents/plugins/marketplace.json',json.dumps(market,ensure_ascii=False,indent=2))
         z.writestr('Folio-Plugin/Install-Codex-Plugin.cmd',install.replace('\r\n','\n').replace('\r','\n').replace('\n','\r\n'))
         z.writestr('Folio-Plugin/README.md',(PLUGIN/'README.md').read_text(encoding='utf-8'))
-    roots=['app','shared','scripts','tests','integrations/folio-plugin','integrations/folio-cloud','integrations/focusflow','.agents']
+    roots=['app','shared','scripts','tests','integrations/folio-plugin','integrations/folio-cloud','integrations/folio-vps','integrations/focusflow','.agents']
     with zipfile.ZipFile(DIST/'Folio-Android-Plugin-source.zip','w',zipfile.ZIP_DEFLATED,strict_timestamps=False) as z:
         for directory in roots:
             for p in (ROOT/directory).rglob('*'):
@@ -42,9 +42,9 @@ pause
             for px,py in [points[0],points[-1]]:draw.ellipse((px-1.5,py-1.5,px+1.5,py+1.5),fill=color)
     title=ImageFont.truetype('C:/Windows/Fonts/segoeui.ttf',32);draw.text((85,45),'Folio Canvas · встроенный рукописный печатный стиль',font=title,fill='#28344b')
     preview.save(DIST/'Folio-handwriting-preview.png')
-    apk=DIST/'Folio-1.17.0-preview.1.apk';apk.write_bytes((DIST/'Folio.apk').read_bytes())
-    artifacts=[apk,DIST/'Folio-Canvas-Plugin-0.2.0.zip',DIST/'Folio-Android-Plugin-source.zip',DIST/'Folio-handwriting-preview.png']
-    receipt={'folio':'1.17.0-preview.1','plugin':'0.2.0','status':'preview; physical tablet and user VPN validation pending','verified':['APK compile/signature','20 ink model assertions','15 actual LAN server assertions with Android UI substituted','real MCP stdio exchange','5 cloud relay suites: authorization, queue, revocation, expiry, MCP','Java/JavaScript/Python AES-GCM and HMAC interoperability','desktop system proxy routing and mocked encrypted relay roundtrip'],'not_verified':['Physical tablet cloud connection/UI/saving','Actual user VPN network'],'files':{p.name:{'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in artifacts}}
+    apk=DIST/'Folio-1.18.0-preview.1.apk';apk.write_bytes((DIST/'Folio.apk').read_bytes())
+    artifacts=[apk,DIST/'Folio-Canvas-Plugin-0.3.0.zip',DIST/'Folio-Android-Plugin-source.zip',DIST/'Folio-handwriting-preview.png']
+    receipt={'folio':'1.18.0-preview.1','plugin':'0.3.0','status':'preview; physical tablet and real handwriting verification pending','verified':['APK compile/signature','ink model, HTTP server, notebook extraction with Android UI substituted','MCP stdio notebook tools with simulated tablet','cloud queue, account isolation and profile import/export encryption','self-hosted OAuth PKCE, token refresh and encrypted queue with simulated tablet'],'not_verified':['Physical tablet notebook image rendering and handwriting recognition','Production ChatGPT OAuth and VPS tablet connection'],'files':{p.name:{'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in artifacts}}
     (DIST/'Folio-plugin-validation.json').write_text(json.dumps(receipt,ensure_ascii=False,indent=2),encoding='utf-8')
     for p in artifacts:
         if p.suffix=='.zip':

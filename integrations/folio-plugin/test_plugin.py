@@ -18,6 +18,10 @@ class Phone(BaseHTTPRequestHandler):
         state={'protocol':1,'document_id':'doc','page_id':'page','revision':str(Phone.revision),'viewport':[0,0,1000,1000],'stroke_count':len(Phone.strokes)}
         status=200
         if self.path=='/v1/snapshot':state['image_png']=PNG
+        elif self.path=='/v1/notebooks':state={'notebooks':[{'id':'doc','title':'Notebook','pages':1}]}
+        elif self.path=='/v1/notebook_pages':state={'document_id':'doc','revision':'1','pages':[{'page_id':'page','ink_bounds':[0,0,100,100]}]}
+        elif self.path=='/v1/notebook_scan':state={'document_id':'doc','page_id':'page','revision':'1','bounds':[0,0,100,100],'image_png':PNG}
+        elif self.path=='/v1/notebook_samples':state={'samples':[{'text':q['samples'][0]['text'],'strokes':[{'points':[0,0,1,0,0,10,20,.7,0,0]}]}]}
         elif self.path in ('/v1/ink','/v1/undo'):
             if q['document_id']!='doc' or q['page_id']!='page' or q['revision']!=str(Phone.revision):status=409;state={'error':'Canvas changed'}
             else:
@@ -50,7 +54,12 @@ async def mcp_checks():
         params=StdioServerParameters(command=sys.executable,args=[str(ROOT/'server.py')],env=env)
         async with stdio_client(params) as streams:
             async with ClientSession(*streams) as client:
-                await client.initialize();tools=await client.list_tools();assert len(tools.tools)==7
+                await client.initialize();tools=await client.list_tools();assert len(tools.tools)==11
+                notebooks=await client.call_tool('folio_list_notebooks',{});assert not notebooks.isError
+                pages=await client.call_tool('folio_list_notebook_pages',{'document_id':'doc'});assert not pages.isError
+                scanned=await client.call_tool('folio_inspect_notebook_page',{'document_id':'doc','page_id':'page'});assert not scanned.isError and any(x.type=='image' for x in scanned.content)
+                learned=await client.call_tool('folio_learn_notebook_regions',{'document_id':'doc','page_id':'page','revision':'1','bounds':[0,0,100,100],'samples':[{'text':'х','rect':[0,0,1,1]}]});assert not learned.isError
+                assert 'х' in json.loads((Path(folder)/'handwriting/my-handwriting.json').read_text(encoding='utf-8'))['samples']
                 image=await client.call_tool('folio_read_canvas',{});assert not image.isError and any(c.type=='image' for c in image.content),image
                 state=json.loads(next(c.text for c in image.content if c.type=='text'));args={'document_id':'doc','page_id':'page','revision':state['revision']}
                 result=await client.call_tool('folio_write_text',{**args,'text':'Привет, Folio!','x':30,'y':40,'operation_id':'test_operation'});assert not result.isError,result

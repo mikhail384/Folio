@@ -1,7 +1,7 @@
 """Publish the current Android/plugin source to a separate GitHub branch; main is untouched."""
 from pathlib import Path
 import base64,concurrent.futures,hashlib,json,re,subprocess,sys
-ROOT=Path(__file__).resolve().parents[1];GH=ROOT/'.tools/gh/gh.exe';REPO='repos/mikhail384/Folio';BRANCH='codex/folio-cloud-link'
+ROOT=Path(__file__).resolve().parents[1];GH=ROOT/'.tools/gh/gh.exe';REPO='repos/mikhail384/Folio';BRANCH='codex/folio-handwriting-vps'
 from package_folio_plugin import source_file
 sys.stdout.reconfigure(encoding='utf-8')
 def api(endpoint,payload=None):
@@ -11,10 +11,10 @@ def api(endpoint,payload=None):
     if r.returncode:raise RuntimeError(r.stderr[:800])
     return json.loads(r.stdout)
 def main():
-    base=api('git/ref/heads/codex/folio-canvas-plugin')['object']['sha'];tree=api('git/trees/'+base+'?recursive=1');assert not tree.get('truncated')
+    base=api('git/ref/heads/codex/folio-cloud-link')['object']['sha'];tree=api('git/trees/'+base+'?recursive=1');assert not tree.get('truncated')
     existing={x['path']:x['sha'] for x in tree['tree'] if x['type']=='blob'}
     files=[]
-    for folder in ['app','shared','scripts','tests','integrations/focusflow','integrations/folio-plugin','integrations/folio-cloud','.agents']:
+    for folder in ['app','shared','scripts','tests','integrations/focusflow','integrations/folio-plugin','integrations/folio-cloud','integrations/folio-vps','.agents']:
         files.extend(p for p in (ROOT/folder).rglob('*') if source_file(p))
     files.extend(ROOT/name for name in ['README.md','build.gradle','settings.gradle','.gitignore'])
     changed=[]
@@ -31,7 +31,7 @@ def main():
         return {'path':path,'mode':'100644','type':'blob','sha':sha}
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:entries=list(pool.map(blob,changed))
     result=api('git/trees',{'base_tree':tree['sha'],'tree':entries})
-    commit=api('git/commits',{'message':'Add VPN-compatible private Folio cloud relay and MCP pairing','tree':result['sha'],'parents':[base]})
+    commit=api('git/commits',{'message':'Add notebook handwriting samples, profile transfer and private VPS service','tree':result['sha'],'parents':[base]})
     # Never overwrite an existing branch on a retry; require a new publication name instead.
     api('git/refs',{'ref':'refs/heads/'+BRANCH,'sha':commit['sha']})
     receipt={'repository':'mikhail384/Folio','branch':BRANCH,'commit':commit['sha'],'base':base,'changed_files':[x['path'] for x in entries]}

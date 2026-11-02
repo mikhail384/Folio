@@ -1,0 +1,17 @@
+import {exportProfile,importProfile} from '/profile-archive.mjs';
+const $=id=>document.getElementById(id);
+async function api(path,options={}){const res=await fetch(path,{cache:'no-store',...options});let value;try{value=await res.json();}catch{throw new Error('Сервис временно недоступен');}if(!res.ok)throw new Error(value.error||'Ошибка подключения');return value;}
+const post=(path,data)=>api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+if($('setup-form')){
+  const token=location.hash.slice(1);history.replaceState(null,'',location.pathname);
+  $('setup-form').addEventListener('submit',async e=>{e.preventDefault();try{if(!token)throw new Error('Откройте одноразовую ссылку настройки');const password=$('new-password').value;if(password!==$('confirm-password').value)throw new Error('Пароли не совпадают');await post('/api/setup',{token,password});location.href='/';}catch(error){$('setup-message').textContent=error.message;}});
+}
+if($('login-form'))$('login-form').addEventListener('submit',async e=>{e.preventDefault();try{await post('/api/login',{password:$('login-password').value});location.href='/';}catch(error){$('login-message').textContent=error.message;}});
+if($('change-password-form'))$('change-password-form').addEventListener('submit',async e=>{e.preventDefault();try{await post('/api/password',{current:$('old-password').value,next:$('next-password').value});$('old-password').value='';$('next-password').value='';$('password-message').textContent='Пароль изменён. Подключите ChatGPT заново.';}catch(error){$('password-message').textContent=error.message;}});
+if($('pair')){
+  let connection='';const update=async()=>{try{const s=await api('/api/session');$('status').textContent=s.online?'● Folio на связи':s.paired?'○ Ожидаем планшет':'○ Планшет ещё не подключён';}catch{}};update();setInterval(update,5000);
+  $('pair').onclick=async()=>{try{const data=await post('/api/session',{});connection=JSON.stringify(data.connection);$('copy').hidden=false;$('pair-message').textContent='Подключение готово. Скопируйте и вставьте его в Folio.';}catch(e){$('pair-message').textContent=e.message;}};
+  $('copy').onclick=async()=>{try{await navigator.clipboard.writeText(connection);$('pair-message').textContent='Скопировано. Вставьте подключение в Folio.';}catch{$('pair-message').textContent='Не удалось скопировать. Разрешите доступ к буферу обмена.';}};
+  $('export').onclick=async()=>{try{const name=$('name').value,data=await api('/api/profiles?name='+encodeURIComponent(name));if(!Object.keys(data.profile.samples).length)throw new Error('В этом профиле пока нет образцов');const archive=await exportProfile(data.profile,$('password').value),url=URL.createObjectURL(new Blob([archive],{type:'application/json'})),link=document.createElement('a');link.href=url;link.download=name+'.folio-handwriting';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);$('password').value='';$('profile-message').textContent='Файл сохранён. Пароль понадобится для импорта.';}catch(e){$('profile-message').textContent=e.message;}};
+  $('import').onclick=async()=>{try{const file=$('file').files[0];if(!file||file.size>8*1024*1024)throw new Error('Выберите файл почерка до 8 МБ');const profile=await importProfile(await file.text(),$('password').value),data=await post('/api/profiles',{name:$('name').value,profile});$('password').value='';$('profile-message').textContent=`Импортировано: ${data.imported}. Всего образцов: ${data.total}.`;}catch(e){$('profile-message').textContent=e.message;}};
+}
