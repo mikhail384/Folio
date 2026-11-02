@@ -16,20 +16,20 @@ import java.util.concurrent.*;
 /** Explicitly enabled, foreground-only LAN API. All document access stays on the UI thread. */
 final class AgentBridge {
     static final int PORT=18765,MAX_BODY=2*1024*1024;
-    final MainActivity a;
+    final MainActivity a;final AgentCloud cloud;
     ServerSocket server;ThreadPoolExecutor workers;volatile int epoch;
     final LinkedHashMap<String,String> receipts=new LinkedHashMap<>();
     String status="Выключено";
-    AgentBridge(MainActivity a){this.a=a;}
+    AgentBridge(MainActivity a){this.a=a;cloud=new AgentCloud(this);}
     String token(){String value=a.prefs.getString("agent_token","");if(value.isEmpty()){byte[] bytes=new byte[32];new SecureRandom().nextBytes(bytes);value=Base64.encodeToString(bytes,Base64.NO_WRAP|Base64.URL_SAFE|Base64.NO_PADDING);a.prefs.edit().putString("agent_token",value).apply();}return value;}
     boolean enabled(){return a.prefs.getBoolean("agent_enabled",false);}
-    void resume(){if(!enabled()||server!=null)return;try{
+    void resume(){if(!enabled()||server!=null||cloud.running)return;if(cloud.configured()){cloud.start(++epoch);return;}try{
         token();ServerSocket socket=new ServerSocket();socket.setReuseAddress(true);socket.bind(new InetSocketAddress(PORT));server=socket;final int generation=++epoch;
         workers=new ThreadPoolExecutor(2,2,30,TimeUnit.SECONDS,new ArrayBlockingQueue<>(8));
         final ThreadPoolExecutor executor=workers;Thread accept=new Thread(()->{while(!socket.isClosed())try{Socket client=socket.accept();client.setSoTimeout(5000);try{executor.execute(()->serve(client,generation));}catch(RejectedExecutionException busy){client.close();}}catch(IOException closed){break;}},"folio-agent-lan");accept.setDaemon(true);accept.start();status="Подключение включено · только открытый холст";
     }catch(IOException e){status="Не удалось открыть подключение: "+e.getClass().getSimpleName();}}
-    void pause(){epoch++;if(server!=null)try{server.close();}catch(IOException ignored){}server=null;if(workers!=null)workers.shutdownNow();workers=null;status=enabled()?"Ожидание открытого Folio":"Выключено";}
-    String url(){try{for(NetworkInterface face:Collections.list(NetworkInterface.getNetworkInterfaces()))if(face.isUp()&&!face.isLoopback())for(InetAddress ip:Collections.list(face.getInetAddresses()))if(ip instanceof Inet4Address&&ip.isSiteLocalAddress()&&face.getName().startsWith("wlan"))return "http://"+ip.getHostAddress()+":"+PORT;
+    void pause(){epoch++;cloud.stop();if(server!=null)try{server.close();}catch(IOException ignored){}server=null;if(workers!=null)workers.shutdownNow();workers=null;status=enabled()?"Ожидание открытого Folio":"Выключено";}
+    String url(){if(cloud.configured())return AgentCloud.ORIGIN;try{for(NetworkInterface face:Collections.list(NetworkInterface.getNetworkInterfaces()))if(face.isUp()&&!face.isLoopback())for(InetAddress ip:Collections.list(face.getInetAddresses()))if(ip instanceof Inet4Address&&ip.isSiteLocalAddress()&&face.getName().startsWith("wlan"))return "http://"+ip.getHostAddress()+":"+PORT;
         for(NetworkInterface face:Collections.list(NetworkInterface.getNetworkInterfaces()))if(face.isUp()&&!face.isLoopback())for(InetAddress ip:Collections.list(face.getInetAddresses()))if(ip instanceof Inet4Address&&ip.isSiteLocalAddress())return "http://"+ip.getHostAddress()+":"+PORT;
     }catch(SocketException ignored){}return "http://<IP планшета в Wi-Fi>:"+PORT;}
     static String line(InputStream in)throws IOException{ByteArrayOutputStream b=new ByteArrayOutputStream();int n;while((n=in.read())!=-1){if(n=='\n')break;if(n!='\r')b.write(n);if(b.size()>4096)throw new IOException("Header too long");}return b.toString("US-ASCII");}
@@ -80,14 +80,18 @@ final class AgentBridge {
             v.checkpoint();int count=AgentInk.remove(page,action);receipts.put(receipt,action);while(receipts.size()>128)receipts.remove(receipts.keySet().iterator().next());v.indexAll();v.rebuild();v.changed();a.saveNow();return state().put("operation_id",op).put("removed_strokes",count).put("autosave","queued");
         }throw new Fault(404,"Unknown Folio operation");
     }
+    String displayStatus(){return cloud.configured()?cloud.status:status;}
     void show(){
         LinearLayout box=a.column();Studio.addCard(a,box,Studio.row(a,"pen","ChatGPT / Codex","Чтение открытого холста, рукописные записи и рисунки",null));
-        LinearLayout row=Studio.row(a,"cloud","Подключение по локальной сети","Доступ действует, пока Folio открыт. Устройства должны быть в одной сети.",null);
-        TextView info=a.text(status+"\n"+url(),14,Studio.MUTED,false);info.setTextIsSelectable(true);
-        Studio.Toggle toggle=new Studio.Toggle(a,enabled(),on->{a.prefs.edit().putBoolean("agent_enabled",on).apply();if(on)resume();else pause();info.setText(status+"\n"+url());});row.addView(toggle,new LinearLayout.LayoutParams(a.dp(50),a.dp(48)));Studio.addCard(a,box,row);a.pad(info,0,16);box.addView(info);
-        box.addView(a.pill("Скопировать подключение",true,()->{try{String config=new JSONObject().put("url",url()).put("token",token()).toString();((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Folio connection",config));a.toast("Вставьте подключение в настройку плагина на ПК");}catch(Exception ignored){}}));
-        box.addView(a.pill("Создать новый ключ",false,()->{pause();a.prefs.edit().remove("agent_token").apply();token();if(enabled())resume();info.setText(status+"\n"+url());a.toast("Старое подключение отключено");}));
-        TextView help=a.text("В плагине сначала прочитайте холст, затем задайте место и текст. Мои записи состоят из обычных штрихов Folio и отменяются отдельной командой.\n\nДля личного почерка напишите букву или слово, выделите лассо и попросите плагин запомнить образец.",13,Studio.MUTED,false);a.pad(help,0,16);box.addView(help);
+        LinearLayout row=Studio.row(a,"cloud","Доступ к холсту","Для разных сетей подключите облако. VPN можно оставить включённым. Доступ действует, пока Folio открыт.",null);
+        TextView info=a.text(displayStatus()+"\n"+url(),14,Studio.MUTED,false);info.setTextIsSelectable(true);
+        Studio.Toggle toggle=new Studio.Toggle(a,enabled(),on->{a.prefs.edit().putBoolean("agent_enabled",on).apply();if(on)resume();else pause();info.setText(displayStatus()+"\n"+url());});row.addView(toggle,new LinearLayout.LayoutParams(a.dp(50),a.dp(48)));Studio.addCard(a,box,row);a.pad(info,0,16);box.addView(info);
+        info.postDelayed(new Runnable(){public void run(){if(info.isAttachedToWindow()){info.setText(displayStatus()+"\n"+url());info.postDelayed(this,1000);}}},1000);
+        box.addView(a.pill("Подключить облако через ChatGPT",true,()->a.startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse(AgentCloud.ORIGIN)))));
+        box.addView(a.pill("Вставить облачное подключение",false,()->{try{ClipboardManager clip=(ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE);if(!clip.hasPrimaryClip())throw new IllegalArgumentException();String raw=clip.getPrimaryClip().getItemAt(0).getText().toString();JSONObject config=AgentCloud.validate(raw);pause();a.prefs.edit().putString("agent_cloud",config.toString()).apply();if(enabled())resume();info.setText(displayStatus()+"\n"+url());a.toast(enabled()?"Облачное подключение сохранено":"Подключение сохранено. Включите доступ к холсту");}catch(Exception error){a.toast("Скопируйте подключение на странице Folio Cloud и вставьте его целиком");}}));
+        box.addView(a.pill("Скопировать подключение для ПК",false,()->{try{String config=cloud.configured()?cloud.profile().toString():new JSONObject().put("url",url()).put("token",token()).toString();((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Folio connection",config));a.toast("Вставьте подключение в настройку плагина на ПК");}catch(Exception ignored){}}));
+        box.addView(a.pill("Новый ключ подключения",false,()->{if(cloud.configured()){a.startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse(AgentCloud.ORIGIN)));return;}pause();a.prefs.edit().remove("agent_token").apply();token();if(enabled())resume();info.setText(displayStatus()+"\n"+url());a.toast("Старое подключение отключено");}));
+        TextView help=a.text("Облачное подключение работает по HTTPS из разных сетей. Общая Wi-Fi сеть и отключение VPN не нужны.\n\nВ плагине сначала прочитайте холст, затем задайте место и текст. Мои записи состоят из обычных штрихов Folio и отменяются отдельной командой.\n\nДля личного почерка напишите букву или слово, выделите лассо и попросите плагин запомнить образец.",13,Studio.MUTED,false);a.pad(help,0,16);box.addView(help);
         new Studio.Builder(a).setTitle("Folio × ИИ").setView(box).setPositiveButton("Готово",null).show();
     }
 }

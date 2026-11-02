@@ -6,6 +6,7 @@ import httpx
 from mcp.server.fastmcp import FastMCP,Image
 from mcp.types import ToolAnnotations,TextContent
 from handwriting import layout,sample_from_selection
+from relay import call as relay_call,system_proxy
 
 ROOT=Path(__file__).resolve().parent
 DATA=Path(os.environ.get('FOLIO_DATA',str(Path.home()/'.folio-plugin')))
@@ -16,19 +17,22 @@ def connection():
     data=json.loads(CONFIG.read_text(encoding='utf-8'));url=data.get('url','').rstrip('/');token=data.get('token','')
     p=urlparse(url)
     if p.scheme not in ('http','https') or not p.hostname or p.username or p.password or p.query or p.fragment or p.path not in ('','/') or not re.fullmatch(r'[A-Za-z0-9_-]{32,128}',token):raise ValueError('Некорректное подключение Folio')
-    return url,token
+    if data.get('transport')=='relay':
+        if p.scheme!='https' or not re.fullmatch('[a-f0-9]{32}',data.get('room','')) or not isinstance(data.get('service_token'),str) or not 16<=len(data['service_token'])<=2048 or any(c in data['service_token'] for c in '\r\n'):raise ValueError('Некорректное облачное подключение Folio')
+    return {**data,'url':url,'token':token}
 
 async def api(route,payload=None):
-    url,token=connection()
+    config=connection();url=config['url'];token=config['token']
     try:
-        async with httpx.AsyncClient(timeout=20,trust_env=False,follow_redirects=False) as client:
+        if config.get('transport')=='relay':return await relay_call(config,route,payload or {})
+        async with httpx.AsyncClient(timeout=20,trust_env=True,proxy=system_proxy(url),follow_redirects=False) as client:
             response=await client.post(url+'/v1/'+route,json=payload or {},headers={'Authorization':'Bearer '+token})
         if response.status_code!=200:
             try:detail=response.json().get('error','Ошибка Folio')
             except ValueError:detail='Неожиданный ответ Folio'
             raise ValueError(f'Folio {response.status_code}: {detail}')
         return response.json()
-    except httpx.RequestError as error:raise ValueError('Нет связи с Folio. Откройте приложение, включите подключение ИИ и проверьте общую Wi-Fi сеть.') from error
+    except httpx.RequestError as error:raise ValueError('Нет связи с Folio. Откройте приложение и включите облачный доступ. Для разных сетей скопируйте новое подключение: https://folio-canvas-link.mikhailllm.chatgpt.site . VPN отключать не нужно.') from error
 
 def profile_path(name):
     if not re.fullmatch('[a-zA-Z0-9_-]{1,48}',name):raise ValueError('Имя профиля: латиница, цифры, дефис, подчёркивание')

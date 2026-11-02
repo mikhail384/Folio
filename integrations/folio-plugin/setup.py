@@ -17,6 +17,9 @@ from urllib.parse import urlparse
 import re
 url=urlparse(data['url'])
 if url.scheme not in ('http','https') or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ('','/') or not re.fullmatch(r'[A-Za-z0-9_-]{32,128}',data['token']):raise ValueError('Invalid Folio connection')
+if data.get('transport')=='relay':
+    service=data.get('service_token','')
+    if url.scheme!='https' or not re.fullmatch('[a-f0-9]{32}',data.get('room','')) or not isinstance(service,str) or not 16<=len(service)<=2048 or any(c in service for c in '\r\n'):raise ValueError('Invalid Folio cloud connection')
 path.write_text(json.dumps(data),encoding='utf-8')
 try:path.chmod(0o600)
 except OSError:pass

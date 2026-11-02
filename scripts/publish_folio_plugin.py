@@ -1,7 +1,8 @@
 """Publish the current Android/plugin source to a separate GitHub branch; main is untouched."""
 from pathlib import Path
 import base64,concurrent.futures,hashlib,json,re,subprocess,sys
-ROOT=Path(__file__).resolve().parents[1];GH=ROOT/'.tools/gh/gh.exe';REPO='repos/mikhail384/Folio';BRANCH='codex/folio-canvas-plugin'
+ROOT=Path(__file__).resolve().parents[1];GH=ROOT/'.tools/gh/gh.exe';REPO='repos/mikhail384/Folio';BRANCH='codex/folio-cloud-link'
+from package_folio_plugin import source_file
 sys.stdout.reconfigure(encoding='utf-8')
 def api(endpoint,payload=None):
     args=[str(GH),'api',REPO+'/'+endpoint]
@@ -10,11 +11,11 @@ def api(endpoint,payload=None):
     if r.returncode:raise RuntimeError(r.stderr[:800])
     return json.loads(r.stdout)
 def main():
-    base=api('git/ref/heads/main')['object']['sha'];tree=api('git/trees/'+base+'?recursive=1');assert not tree.get('truncated')
+    base=api('git/ref/heads/codex/folio-canvas-plugin')['object']['sha'];tree=api('git/trees/'+base+'?recursive=1');assert not tree.get('truncated')
     existing={x['path']:x['sha'] for x in tree['tree'] if x['type']=='blob'}
     files=[]
-    for folder in ['app','shared','scripts','tests','integrations/focusflow','integrations/folio-plugin','.agents']:
-        files.extend(p for p in (ROOT/folder).rglob('*') if p.is_file() and not any(part in {'build','__pycache__','.venv','handwriting-profiles'} for part in p.relative_to(ROOT).parts) and p.suffix not in {'.pyc','.jks','.keystore'} and p.name not in {'connection.json','config.local.json'})
+    for folder in ['app','shared','scripts','tests','integrations/focusflow','integrations/folio-plugin','integrations/folio-cloud','.agents']:
+        files.extend(p for p in (ROOT/folder).rglob('*') if source_file(p))
     files.extend(ROOT/name for name in ['README.md','build.gradle','settings.gradle','.gitignore'])
     changed=[]
     for p in files:
@@ -30,7 +31,7 @@ def main():
         return {'path':path,'mode':'100644','type':'blob','sha':sha}
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:entries=list(pool.map(blob,changed))
     result=api('git/trees',{'base_tree':tree['sha'],'tree':entries})
-    commit=api('git/commits',{'message':'Add Folio canvas MCP plugin and foreground LAN ink API','tree':result['sha'],'parents':[base]})
+    commit=api('git/commits',{'message':'Add VPN-compatible private Folio cloud relay and MCP pairing','tree':result['sha'],'parents':[base]})
     # Never overwrite an existing branch on a retry; require a new publication name instead.
     api('git/refs',{'ref':'refs/heads/'+BRANCH,'sha':commit['sha']})
     receipt={'repository':'mikhail384/Folio','branch':BRANCH,'commit':commit['sha'],'base':base,'changed_files':[x['path'] for x in entries]}
