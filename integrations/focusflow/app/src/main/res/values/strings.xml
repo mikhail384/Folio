@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">FocusFlow</string>
+    <string name="service_description">Выполняет выбранные вами действия по двойному сжатию Focus Pen Pro: навигацию, скриншоты, запуск приложений и жесты. Получает команды пера через ADB-помощник или события клавиш Android. Не читает текст на экране и не передаёт данные в интернет.</string>
+    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#7773FA</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#101217</item>
+        <item name="android:navigationBarColor">#101217</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#101217</item>
+    </style>
+</resources>

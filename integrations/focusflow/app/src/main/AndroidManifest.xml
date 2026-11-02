@@ -1,0 +1,28 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="ru.focusflow.pen" android:versionCode="13" android:versionName="1.8.1">
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.BIND_APPWIDGET"/>
+    <queries><package android:name="com.xiaomi.touchservice" /><package android:name="ru.folio.notes"/><intent><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent><intent><action android:name="android.intent.action.CREATE_SHORTCUT"/></intent><intent><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent></queries>
+    <application android:label="FocusFlow" android:icon="@drawable/ic_pen" android:theme="@style/AppTheme" android:allowBackup="false" android:supportsRtl="true" android:usesCleartextTraffic="false" android:extractNativeLibs="true">
+        <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES"/><category android:name="android.intent.category.DEFAULT"/></intent-filter>
+        </activity>
+        <service android:name=".FocusFlowTileService" android:label="FocusFlow" android:icon="@drawable/ic_tile_pen" android:exported="true" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE"/></intent-filter>
+            <meta-data android:name="android.service.quicksettings.ACTIVE_TILE" android:value="true"/>
+            <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="true"/>
+        </service>
+        <activity android:name=".WidgetActivity" android:exported="false"/>
+        <activity android:name=".AppTargetsActivity" android:exported="false"/>
+        <service android:name=".PenService" android:label="FocusFlow · управление пером" android:exported="true" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService"/></intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/pen_service"/>
+        </service>
+        <receiver android:name=".FolioPriorityReceiver" android:exported="true"><intent-filter><action android:name="ru.folio.notes.PEN_PRIORITY_CHANGED"/></intent-filter></receiver>
+        <service android:name=".AutoAdbService" android:exported="true"/>
+        <provider android:name=".PenProvider" android:authorities="ru.focusflow.pen.bridge" android:exported="true" android:permission="android.permission.DUMP"/>
+    </application>
+</manifest>

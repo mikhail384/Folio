@@ -1,0 +1,23 @@
+<resources>
+    <style name="BaseAppTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#B5B3FF</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:statusBarColor">#15171C</item>
+        <item name="android:navigationBarColor">#15171C</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#15171C</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:alertDialogTheme">@style/FolioDialog</item>
+    </style>
+    <style name="AppTheme" parent="BaseAppTheme" />
+    <style name="FolioDialog" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:colorAccent">#B5B3FF</item>
+        <item name="android:windowBackground">@drawable/dialog_bg</item>
+        <item name="android:colorBackgroundFloating">#15171C</item>
+        <item name="android:windowMinWidthMajor">60%</item>
+        <item name="android:windowMinWidthMinor">88%</item>
+        <item name="android:fontFamily">sans</item>
+    </style>
+</resources>

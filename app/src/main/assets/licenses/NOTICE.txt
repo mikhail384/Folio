@@ -1,0 +1,5 @@
+Folio uses Tesseract4Android 4.9.0. Copyright 2019 Adaptech s.r.o., Robert Posel. Apache License 2.0.
+https://github.com/adaptech-cz/Tesseract4Android
+Tesseract OCR and eng/rus tessdata_fast models: https://github.com/tesseract-ocr (Apache License 2.0).
+The native AAR includes Tesseract, Leptonica, libjpeg and libpng. Upstream source and license notices: https://github.com/adaptech-cz/Tesseract4Android/tree/4.9.0/tesseract4android/src/main/cpp
+Freenotes tool/stroke PNG provenance: assets/freenotes_tools/source.json and assets/freenotes_strokes/source.json.

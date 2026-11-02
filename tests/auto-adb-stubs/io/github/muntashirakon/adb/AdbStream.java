@@ -1,0 +1,1 @@
+package io.github.muntashirakon.adb;import java.io.*;public class AdbStream implements AutoCloseable {boolean closed;public InputStream openInputStream(){return new ByteArrayInputStream("FOLIO_FOCUSFLOW_STARTED\n".getBytes());}public boolean isClosed(){return closed;}public void close(){closed=true;}}

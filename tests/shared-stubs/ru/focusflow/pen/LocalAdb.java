@@ -1,0 +1,1 @@
+package ru.focusflow.pen;import android.content.Context;import org.json.JSONObject;public class LocalAdb {public static LocalAdb get(Context c){return new LocalAdb();}public JSONObject state(){return new JSONObject();}}

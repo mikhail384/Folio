@@ -1,0 +1,9 @@
+build/
+.tools/
+local.properties
+*.jks
+__pycache__/
+.venv/
+connection.json
+config.local.json
+integrations/folio-plugin/handwriting-profiles/

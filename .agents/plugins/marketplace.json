@@ -1,0 +1,7 @@
+{
+  "name": "folio-local",
+  "interface": {"displayName": "Folio"},
+  "plugins": [
+    {"name": "folio-canvas", "source": {"source": "local", "path": "./integrations/folio-plugin"}, "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"}, "category": "Productivity"}
+  ]
+}

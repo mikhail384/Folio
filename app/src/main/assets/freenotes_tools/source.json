@@ -1,0 +1,369 @@
+{
+  "sourcePackage": "ai.note.notepad.memo.journal.freenote",
+  "sourceApkSha256": "35155258c7cf5c1e20ad84cd44ed70cb490922d8b25e6ee03344d995d7d90a5c",
+  "scope": "original tool-art PNGs only, from local APK; no source code, accounts, ads, fonts or native libraries copied",
+  "families": {
+    "ball": [
+      "ic_ball_pen_part_1_night.png",
+      "ic_ball_pen_part_2_night.png",
+      "ic_ball_pen_part_3_night.png",
+      "ic_ball_pen_part_4_night.png",
+      "ic_ball_pen_highlighter_night.png"
+    ],
+    "fountain": [
+      "ic_pen_part_1.png",
+      "ic_pen_part_2_night.png",
+      "ic_pen_part_3_night.png",
+      "ic_pen_part_4_night.png",
+      "ic_pen_highlighter_night.png"
+    ],
+    "pencil": [
+      "ic_pencil_part_1.png",
+      "ic_pencil_part_2_night.png",
+      "ic_pencil_part_3_night.png",
+      "ic_pencil_part_4_night.png"
+    ],
+    "marker": [
+      "ic_highlighter_part_1_night.png",
+      "ic_highlighter_part_2_night.png",
+      "ic_highlighter_part_3_night.png",
+      "ic_highlighter_part_4_night.png",
+      "ic_highlighter_pen_highlighter_night.png"
+    ],
+    "felt": [
+      "ic_underline_pen_part_1.png",
+      "ic_underline_pen_part_2_night.png",
+      "ic_underline_pen_part_3.png",
+      "ic_underline_pen_part_4_night.png"
+    ],
+    "eraser": [
+      "ic_eraser_part_1_night.png",
+      "ic_eraser_part_2_night.png",
+      "ic_eraser_part_2_night_cha.png",
+      "ic_eraser_part_3_night.png",
+      "ic_eraser_highlighter_night.png"
+    ],
+    "laser": [
+      "ic_laser_pen_head1.png",
+      "ic_laser_pen_head2.png",
+      "ic_laser_pen_head_night.png",
+      "ic_laser_pen_foot_night.png",
+      "ic_laser_highlighter_night.png"
+    ],
+    "lasso": [
+      "ic_lasso_part_1_night.png",
+      "ic_lasso_part_2_night.png",
+      "ic_lasso_highlighter_night.png"
+    ],
+    "flat": [
+      "ic_tape_25.png",
+      "ic_brush_ruler_night.png"
+    ]
+  },
+  "files": [
+    {
+      "file": "ic_ball_pen_highlighter_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_ball_pen_highlighter_night.png",
+      "sha256": "4f5979566cb896ca4f4b56ec8f3046b4ad53d6f43debe8bb211f7ee3f610cee3",
+      "width": 58,
+      "height": 247,
+      "bytes": 3354
+    },
+    {
+      "file": "ic_ball_pen_part_1_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_ball_pen_part_1_night.png",
+      "sha256": "87a7acb2ded4e7c1c540e42388304c2b91bca59d9ca663d05e4f74d7a20c25b0",
+      "width": 104,
+      "height": 60,
+      "bytes": 464
+    },
+    {
+      "file": "ic_ball_pen_part_2_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_ball_pen_part_2_night.png",
+      "sha256": "91127821b0dfbdd66ecf81c805ab9f88e2a9f7fc2582b25811bc202b026f7f81",
+      "width": 90,
+      "height": 154,
+      "bytes": 936
+    },
+    {
+      "file": "ic_ball_pen_part_3_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_ball_pen_part_3_night.png",
+      "sha256": "1ffc1fa54636d0c5656484c7cb9bb858b7d9149659235051a79bd12a8da2d323",
+      "width": 52,
+      "height": 8,
+      "bytes": 76
+    },
+    {
+      "file": "ic_ball_pen_part_4_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_ball_pen_part_4_night.png",
+      "sha256": "d147cd58fceee36228f3a0f023561ac70cf072f04df4b0140a701c8fa0038b45",
+      "width": 52,
+      "height": 169,
+      "bytes": 113
+    },
+    {
+      "file": "ic_brush_ruler_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_brush_ruler_night.png",
+      "sha256": "f83fe5d213e81513dd5c273a69f2eb0c1ecbce27d663d7b52efab3fd5fa06030",
+      "width": 158,
+      "height": 252,
+      "bytes": 8348
+    },
+    {
+      "file": "ic_eraser_highlighter_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_eraser_highlighter_night.png",
+      "sha256": "bec964687c7047612a2a79e1b054a4a5f8aedf4f51e4e9bd23100c08697c6ccf",
+      "width": 92,
+      "height": 518,
+      "bytes": 4834
+    },
+    {
+      "file": "ic_eraser_part_1_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_eraser_part_1_night.png",
+      "sha256": "2ee8282e60e03e3cd9a792b3a4eea93b1266242618acb63b82a649e4a2b3eeff",
+      "width": 52,
+      "height": 52,
+      "bytes": 1153
+    },
+    {
+      "file": "ic_eraser_part_2_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_eraser_part_2_night.png",
+      "sha256": "9aeccda55b15ac46b180e9cbcb2d9ddabb663881500733ccf5d5755491437fbb",
+      "width": 52,
+      "height": 247,
+      "bytes": 161
+    },
+    {
+      "file": "ic_eraser_part_2_night_cha.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_eraser_part_2_night_cha.png",
+      "sha256": "36e6d40586a188ba1d7cb0cffbcb5c04ce6de8fe5757cb78122ee96ab18bd013",
+      "width": 52,
+      "height": 124,
+      "bytes": 369
+    },
+    {
+      "file": "ic_eraser_part_3_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_eraser_part_3_night.png",
+      "sha256": "69975dbdb9b05b7f76ee79e3d5fd9715512324d9b50d54bda9bfe4fe6b8d01be",
+      "width": 52,
+      "height": 124,
+      "bytes": 106
+    },
+    {
+      "file": "ic_highlighter_part_1_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_highlighter_part_1_night.png",
+      "sha256": "b08dec6598e3716f4e57369110603320218549bd2e2d464a33e6c8d03a500893",
+      "width": 52,
+      "height": 27,
+      "bytes": 479
+    },
+    {
+      "file": "ic_highlighter_part_2_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_highlighter_part_2_night.png",
+      "sha256": "d0a464e871408c9b092aa29a836d1b74163969f5366e24de15a4a8985cdd82b8",
+      "width": 52,
+      "height": 75,
+      "bytes": 432
+    },
+    {
+      "file": "ic_highlighter_part_3_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_highlighter_part_3_night.png",
+      "sha256": "c33ca41f7172882bbb6d887121c55e825ff491df65d2ee61779be5efb21e8f0c",
+      "width": 52,
+      "height": 20,
+      "bytes": 98
+    },
+    {
+      "file": "ic_highlighter_part_4_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_highlighter_part_4_night.png",
+      "sha256": "61a1b11fffc88d51d0046fff8c40014fbda748709b0840342df749dc2a92180f",
+      "width": 52,
+      "height": 180,
+      "bytes": 157
+    },
+    {
+      "file": "ic_highlighter_pen_highlighter_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_highlighter_pen_highlighter_night.png",
+      "sha256": "8c2738a3af98fbede96f8554f980374072a3459445ccc6038726191e0f225b63",
+      "width": 44,
+      "height": 195,
+      "bytes": 1949
+    },
+    {
+      "file": "ic_laser_highlighter_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_laser_highlighter_night.png",
+      "sha256": "561f915bdbc5bb3962f85ff2764b93acd8e14a7b50cb825eb3eec2b17dcf7a54",
+      "width": 50,
+      "height": 243,
+      "bytes": 2397
+    },
+    {
+      "file": "ic_laser_pen_foot_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_laser_pen_foot_night.png",
+      "sha256": "1dea5e3b1436e66e44dbb0b03d4c0a27ad481e655cf4f3d072fe798559e57a8a",
+      "width": 104,
+      "height": 280,
+      "bytes": 5307
+    },
+    {
+      "file": "ic_laser_pen_head1.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_laser_pen_head1.png",
+      "sha256": "09abcdbda3c4b806804cc4a92fee52eec537df8af2eaea8b18f96c3e94eb1600",
+      "width": 52,
+      "height": 40,
+      "bytes": 904
+    },
+    {
+      "file": "ic_laser_pen_head2.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_laser_pen_head2.png",
+      "sha256": "3c4e16eb3927cd94108070dfb6e6d877eeae0589929c235be3e7bea33c8c7125",
+      "width": 52,
+      "height": 40,
+      "bytes": 4062
+    },
+    {
+      "file": "ic_laser_pen_head_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_laser_pen_head_night.png",
+      "sha256": "b969c2598bee8b78893b60076ee0d801b00f900101aada0826a487c44251189e",
+      "width": 104,
+      "height": 240,
+      "bytes": 5035
+    },
+    {
+      "file": "ic_lasso_highlighter_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_lasso_highlighter_night.png",
+      "sha256": "00c68b40b149e95bf484ba51a6ace1d6c54c9466d157e34d3e0a2e06412109b8",
+      "width": 59,
+      "height": 262,
+      "bytes": 4033
+    },
+    {
+      "file": "ic_lasso_part_1_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_lasso_part_1_night.png",
+      "sha256": "63663b1cf93b78c18c338481ff29ed6cac6a5acc23d319721fd712e985966a4a",
+      "width": 54,
+      "height": 81,
+      "bytes": 1867
+    },
+    {
+      "file": "ic_lasso_part_2_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_lasso_part_2_night.png",
+      "sha256": "fba4a9c60f1813a5ad5562ccbde4fc882e76103aedd0d18d447539850b536724",
+      "width": 52,
+      "height": 223,
+      "bytes": 161
+    },
+    {
+      "file": "ic_pen_highlighter_night.png",
+      "sourcePath": "res/mipmap-xxhdpi-v4/ic_pen_highlighter_night.png",
+      "sha256": "e15dade11edc807fc7792f66f204dc2a682108c1834968eab43e09b0ece59357",
+      "width": 45,
+      "height": 156,
+      "bytes": 1633
+    },
+    {
+      "file": "ic_pen_part_1.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_pen_part_1.png",
+      "sha256": "d571776db37120ea4c12100626ed9c638478313743881ac1ad9c09bc83bb95a7",
+      "width": 48,
+      "height": 92,
+      "bytes": 1627
+    },
+    {
+      "file": "ic_pen_part_2_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_pen_part_2_night.png",
+      "sha256": "cb41a3bf340396010c76881a7e00357a878679782231101b67a048ccd7e7a722",
+      "width": 52,
+      "height": 41,
+      "bytes": 402
+    },
+    {
+      "file": "ic_pen_part_3_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_pen_part_3_night.png",
+      "sha256": "c42b122cee9d7466629733e0b6ddda0dd0ae848d355458b36fde8dbab050422c",
+      "width": 52,
+      "height": 9,
+      "bytes": 93
+    },
+    {
+      "file": "ic_pen_part_4_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_pen_part_4_night.png",
+      "sha256": "988a447c5de9682bd749f8ec581163e572b029a876e70bc83fa282fe0006bf03",
+      "width": 52,
+      "height": 160,
+      "bytes": 154
+    },
+    {
+      "file": "ic_pencil_part_1.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_pencil_part_1.png",
+      "sha256": "bf37478661aacb465d70ad34709ceb27f8e3709eba3ba45aef7d0e3b20678a43",
+      "width": 52,
+      "height": 34,
+      "bytes": 375
+    },
+    {
+      "file": "ic_pencil_part_2_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_pencil_part_2_night.png",
+      "sha256": "0a926112b7d20ab703c1ee3a23e35d5cbe00af76d53071ef2f9cb67e41c62ee1",
+      "width": 104,
+      "height": 132,
+      "bytes": 8768
+    },
+    {
+      "file": "ic_pencil_part_3_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_pencil_part_3_night.png",
+      "sha256": "1ffc1fa54636d0c5656484c7cb9bb858b7d9149659235051a79bd12a8da2d323",
+      "width": 52,
+      "height": 8,
+      "bytes": 76
+    },
+    {
+      "file": "ic_pencil_part_4_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_pencil_part_4_night.png",
+      "sha256": "f2bc03df7112de2dbcd2178e254b8db3a13864fa69e9d2feab1fde3574446329",
+      "width": 104,
+      "height": 384,
+      "bytes": 15376
+    },
+    {
+      "file": "ic_tape_25.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_tape_25.png",
+      "sha256": "7a8df3a15acbc8091781cd7ac86d8aa8fdbe5f3b8df4b194cc437d1aefa49143",
+      "width": 100,
+      "height": 100,
+      "bytes": 2192
+    },
+    {
+      "file": "ic_underline_pen_part_1.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_underline_pen_part_1.png",
+      "sha256": "379be3e6cdcbf72d148ade8acd1ef4be2e0b36b4c47bdfed3fdf0a309b573e19",
+      "width": 36,
+      "height": 26,
+      "bytes": 328
+    },
+    {
+      "file": "ic_underline_pen_part_2_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_underline_pen_part_2_night.png",
+      "sha256": "7f70418e89214b6a67c44c48f1509aea40b029751541748fdc8711064982701f",
+      "width": 36,
+      "height": 46,
+      "bytes": 901
+    },
+    {
+      "file": "ic_underline_pen_part_3.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_underline_pen_part_3.png",
+      "sha256": "f6104b5fcb381a4e5ccf0071e73e4850bd0e01c09d97072936dcf93a5663306b",
+      "width": 36,
+      "height": 6,
+      "bytes": 81
+    },
+    {
+      "file": "ic_underline_pen_part_4_night.png",
+      "sourcePath": "res/drawable-xxhdpi-v4/ic_underline_pen_part_4_night.png",
+      "sha256": "b3ab8cf870ffbe29e0c0a5ebb2cfd18d2502bb3c06ae08818620c1b7a24377e0",
+      "width": 36,
+      "height": 120,
+      "bytes": 1515
+    }
+  ]
+}

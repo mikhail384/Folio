@@ -1,0 +1,56 @@
+{
+  "sourcePackage": "ai.note.notepad.memo.journal.freenote",
+  "sourceVersion": "3.26.6",
+  "sourceApkSha256": "35155258c7cf5c1e20ad84cd44ed70cb490922d8b25e6ee03344d995d7d90a5c",
+  "scope": "original bitmap grain and tape materials; Folio geometry and renderer",
+  "files": [
+    {
+      "file": "pencil_texture.png",
+      "sourcePath": "res/drawable/pencil_texture.png",
+      "sha256": "2d10a8b6d7ab21c73359512ff6a6d15e5ee8f169abe952f5f598e0b35ff2fd1c",
+      "width": 256,
+      "height": 16,
+      "bytes": 2254
+    },
+    {
+      "file": "tape_stripe_1.png",
+      "sourcePath": "res/drawable/tape_stripe_1.png",
+      "sha256": "ec178144da2f309754ba0be3adad605c1ec30050105529a4b2b42a6546c89717",
+      "width": 400,
+      "height": 140,
+      "bytes": 2670
+    },
+    {
+      "file": "tape_square_1.png",
+      "sourcePath": "res/drawable/tape_square_1.png",
+      "sha256": "feb725d7c6662d6ffdcf46ba170c67c4f772f290700da83e6f408a1ab71726c9",
+      "width": 420,
+      "height": 152,
+      "bytes": 2014
+    },
+    {
+      "file": "tape_texture_1_256.png",
+      "sourcePath": "res/drawable/tape_texture_1_256.png",
+      "sha256": "6afa5e5b7e61b97b91435201a688fa391fdecfc760c176c2c1e0d7cda6809bfd",
+      "width": 256,
+      "height": 256,
+      "bytes": 5200
+    },
+    {
+      "file": "tape_texture_2_256.png",
+      "sourcePath": "res/drawable/tape_texture_2_256.png",
+      "sha256": "5b1f7f0ddbc9f0c53a8637a6b2deb7004b534a062446693a9cd247a276bcd5b5",
+      "width": 256,
+      "height": 256,
+      "bytes": 6720
+    },
+    {
+      "file": "tape_texture_3_256.png",
+      "sourcePath": "res/drawable/tape_texture_3_256.png",
+      "sha256": "224210420d9e68a79ced2289832731e2649e0bc0c95f0c5d85a680190d59bfc7",
+      "width": 256,
+      "height": 256,
+      "bytes": 9394
+    }
+  ]
+}

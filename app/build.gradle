@@ -1,0 +1,10 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'ru.folio.notes'
+    compileSdk 35
+    defaultConfig { applicationId 'ru.folio.notes'; minSdk 26; targetSdk 35; versionCode 33; versionName '1.16.0-preview.1' }
+}
+
+android.sourceSets.main.java.srcDir '../shared/penbridge/src'
+
+dependencies { implementation files('libs/PenEngine-release_0.3.2.aar'); implementation files('libs/tesseract4android-4.9.0.aar') }

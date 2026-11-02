@@ -1,0 +1,1 @@
+package android.app;import android.content.*;import java.util.*;public class Activity extends Context {public final List<String> opened=new ArrayList<>();public int reject;public void startActivity(Intent intent){opened.add(intent.action);if(reject-->0)throw new ActivityNotFoundException();}}

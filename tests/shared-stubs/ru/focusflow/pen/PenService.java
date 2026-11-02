@@ -1,0 +1,1 @@
+package ru.focusflow.pen;import org.json.JSONObject;import java.util.*;public class PenService {public final List<String> performed=new ArrayList<>();public interface Result {void done(boolean ok);}public void perform(JSONObject action,Result result){performed.add(action.optString("type"));result.done(true);}public void stopScreenRecording(){}}

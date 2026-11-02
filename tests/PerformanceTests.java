@@ -1,0 +1,40 @@
+package ru.folio.notes;
+
+import android.app.*;
+import android.content.*;
+import android.graphics.*;
+import android.os.*;
+import android.view.*;
+import java.io.*;
+import java.util.*;
+import java.util.concurrent.atomic.*;
+import org.json.*;
+
+/** Identical before/after workload. User documents and preferences are not used as fixtures. */
+public final class PerformanceTests extends Instrumentation {
+    MainActivity a;SharedPreferences originalPrefs;Ink.Doc originalDoc;NotesView originalCanvas;GestureActions originalActions;CountingPrefs prefs;Studio.Sheet sheet;String phase="after";int assertions;
+    final ArrayList<Long> frames=new ArrayList<>(),commands=new ArrayList<>(),firstVisible=new ArrayList<>();HandlerThread metrics;
+    void check(boolean yes,String name){if(!yes)throw new AssertionError(name);assertions++;}
+    void main(Runnable r)throws Exception{final Throwable[] failure={null};runOnMainSync(()->{try{r.run();}catch(Throwable t){failure[0]=t;}});if(failure[0]!=null)throw new RuntimeException(failure[0]);}
+    static double percentile(List<Long> data,double fraction){if(data.isEmpty())return 0;ArrayList<Long> sorted=new ArrayList<>(data);Collections.sort(sorted);return sorted.get(Math.min(sorted.size()-1,(int)Math.floor((sorted.size()-1)*fraction)))/1e6;}
+    void flush(){try{MainActivity.class.getDeclaredMethod("flushToolUpdates").invoke(a);}catch(ReflectiveOperationException ignored){}}
+    @Override public void onCreate(Bundle b){super.onCreate(b);if(b!=null)phase=b.getString("phase","after");start();}
+    @Override public void onStart(){Bundle result=new Bundle();JSONObject report=new JSONObject();boolean passed=false;try{
+        Intent intent=new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);a=(MainActivity)startActivitySync(intent);for(int i=0;i<100&&(!a.ready||a.launch!=null);i++)SystemClock.sleep(40);check(a.ready,"activity ready");
+        main(()->{originalPrefs=a.prefs;originalDoc=a.current;originalCanvas=a.canvas;originalActions=a.actions;SharedPreferences temporary=a.getSharedPreferences("folio-performance-qa",0);temporary.edit().clear().putBoolean("initialized",true).putBoolean(Onboarding.SEEN,true).putBoolean("card_motion",true).putBoolean("toolbar_motion",true).putBoolean("pen_haptic",false).putBoolean("backup_auto",false).putString("gesture_single","[\"thicker\",\"thinner\",\"cycle\",\"cycle\"]").putString("gesture_hold","[\"none\"]").putInt("squeezeBindingsVersion",1).commit();prefs=new CountingPrefs(temporary);a.prefs=prefs;a.actions=new GestureActions(a);Ink.Doc doc=new Ink.Doc();doc.title="Motion performance QA";doc.page().infinite=true;doc.page().pattern="grid";
+            for(int j=0;j<500;j++){Ink.Stroke stroke=new Ink.Stroke();stroke.tool=j%7==0?"pencil":"pen";stroke.color=0xff2f415d;stroke.width=2+j%5;for(int i=0;i<80;i++)stroke.points.add(new Ink.Pt(j%25*46+i*.45f,j/25*38+(float)Math.sin(i*.12)*10,.8f,.2f,.3f));doc.page().strokes.add(stroke);}a.current=doc;a.canvas=null;a.buildEditor();});SystemClock.sleep(650);
+        final long[] applyCount={0};main(()->{for(int i=0;i<6;i++)a.actions.run("single");flush();prefs.applies=0;for(int i=0;i<200;i++){long start=System.nanoTime();a.actions.run("single");commands.add(System.nanoTime()-start);}applyCount[0]=prefs.applies;});SystemClock.sleep(250);main(()->flush());int persisted=prefs.applies;
+        metrics=new HandlerThread("folio-qa-frame-metrics");metrics.start();Handler handler=new Handler(metrics.getLooper());
+        for(int i=0;i<6;i++){final int index=i;AtomicLong visible=new AtomicLong();long[] start={0};main(()->{a.canvas.setTool(index%2==0?"pen":"brush");flush();start[0]=System.nanoTime();sheet=CompactInspector.writing(a,a.canvas.tool);sheet.getWindow().addOnFrameMetricsAvailableListener((window,frame,dropped)->{long duration=frame.getMetric(FrameMetrics.TOTAL_DURATION);if(duration>0)synchronized(frames){frames.add(duration);}},handler);sheet.card.getViewTreeObserver().addOnDrawListener(()->{if(sheet!=null&&sheet.card.getAlpha()>.01f)visible.compareAndSet(0,System.nanoTime()-start[0]);});});SystemClock.sleep(570);main(()->{check(sheet.isShowing()&&sheet.card.getAlpha()>.99f,"card fully opens "+index);sheet.dismiss();});SystemClock.sleep(210);if(visible.get()>0)firstVisible.add(visible.get());main(()->check(!sheet.isShowing(),"card closes "+index));}
+        report.put("phase",phase).put("workload","500 strokes x 80 points; 200 x four tool commands; six open/close inspectors").put("commandPlans",200).put("commandCount",800).put("commandBatchMedianMs",percentile(commands,.5)).put("commandBatchP95Ms",percentile(commands,.95)).put("preferenceAppliesDuringBurst",applyCount[0]).put("preferenceAppliesAfterFlush",persisted).put("firstVisibleMedianMs",percentile(firstVisible,.5)).put("firstVisibleP95Ms",percentile(firstVisible,.95));synchronized(frames){report.put("frameSamples",frames.size()).put("frameTotalMedianMs",percentile(frames,.5)).put("frameTotalP95Ms",percentile(frames,.95)).put("frameTotalMaxMs",percentile(frames,1));}report.put("scope","Android app/Window workload, not physical pen-to-display latency; temporary notebook/preferences only");passed=true;
+    }catch(Throwable t){StringWriter trace=new StringWriter();t.printStackTrace(new PrintWriter(trace));try{report.put("error",trace.toString());}catch(JSONException ignored){}}
+    finally{if(metrics!=null)metrics.quitSafely();if(a!=null&&originalPrefs!=null)try{main(()->{if(sheet!=null)sheet.dismissNow();flush();a.ui.removeCallbacks(a.saveLater);a.ui.removeCallbacks(a.backupLater);a.prefs=originalPrefs;a.current=originalDoc;a.actions=originalActions;a.canvas=originalCanvas;if(originalDoc==null){a.canvas=null;a.library();}else a.buildEditor();a.deleteSharedPreferences("folio-performance-qa");});}catch(Exception e){passed=false;try{report.put("cleanupError",e.toString());}catch(Exception ignored){}}}
+        try{report.put("assertions",assertions);File folder=new File(getTargetContext().getExternalFilesDir(null),"qa");folder.mkdirs();try(FileOutputStream out=new FileOutputStream(new File(folder,"performance-"+phase+".json"))){out.write(report.toString(2).getBytes("UTF-8"));}}catch(Exception e){passed=false;}
+        result.putString("stream",(passed?"PASS ":"FAIL ")+assertions+" native performance checks\n"+report.toString()+"\n");finish(passed?Activity.RESULT_OK:Activity.RESULT_CANCELED,result);
+    }
+    static final class CountingPrefs implements SharedPreferences {
+        final SharedPreferences value;int applies;CountingPrefs(SharedPreferences value){this.value=value;}
+        public Map<String,?> getAll(){return value.getAll();}public String getString(String k,String d){return value.getString(k,d);}public Set<String> getStringSet(String k,Set<String> d){return value.getStringSet(k,d);}public int getInt(String k,int d){return value.getInt(k,d);}public long getLong(String k,long d){return value.getLong(k,d);}public float getFloat(String k,float d){return value.getFloat(k,d);}public boolean getBoolean(String k,boolean d){return value.getBoolean(k,d);}public boolean contains(String k){return value.contains(k);}public void registerOnSharedPreferenceChangeListener(OnSharedPreferenceChangeListener l){value.registerOnSharedPreferenceChangeListener(l);}public void unregisterOnSharedPreferenceChangeListener(OnSharedPreferenceChangeListener l){value.unregisterOnSharedPreferenceChangeListener(l);}
+        public Editor edit(){Editor e=value.edit();return new Editor(){public Editor putString(String k,String v){e.putString(k,v);return this;}public Editor putStringSet(String k,Set<String> v){e.putStringSet(k,v);return this;}public Editor putInt(String k,int v){e.putInt(k,v);return this;}public Editor putLong(String k,long v){e.putLong(k,v);return this;}public Editor putFloat(String k,float v){e.putFloat(k,v);return this;}public Editor putBoolean(String k,boolean v){e.putBoolean(k,v);return this;}public Editor remove(String k){e.remove(k);return this;}public Editor clear(){e.clear();return this;}public boolean commit(){applies++;return e.commit();}public void apply(){applies++;e.apply();}};}
+    }
+}

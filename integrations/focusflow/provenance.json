@@ -1,0 +1,7 @@
+{
+  "originalApkSha256": "ce5dc16586d64d753c28e88e39697431366df58063e662ad068f851273496eb3",
+  "originalVersion": "1.5",
+  "originalVersionCode": 8,
+  "signerSha256": "ea853d1d0ef82bb10e4c735bcc93556f506729be367812f5f592ae5883117eaf",
+  "source": "Local FocusFlow project; attached APK byte-identical to that project release. Signing key remains outside distributed sources."
+}

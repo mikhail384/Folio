@@ -1,0 +1,14 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'ru.focusflow.pen'
+    compileSdk 35
+    defaultConfig { applicationId 'ru.focusflow.pen'; minSdk 26; targetSdk 35; versionCode 13; versionName '1.8.1'; ndk { abiFilters 'arm64-v8a' } }
+    sourceSets.main.java.srcDir '../../../shared/penbridge/src'
+    compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
+}
+dependencies {
+    implementation 'com.github.MuntashirAkon:libadb-android:3.1.1'
+    implementation 'org.conscrypt:conscrypt-android:2.5.3'
+}
+
+dependencies { implementation files('../../../app/libs/PenEngine-release_0.3.2.aar') }
