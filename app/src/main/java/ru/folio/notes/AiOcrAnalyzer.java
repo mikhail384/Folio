@@ -11,6 +11,7 @@ import org.json.*;
 /** Local OCR only. The renderer and model never receive non-consenting notebooks. */
 final class AiOcrAnalyzer implements AutoCloseable {
     private final TessBaseAPI tess;
+    private boolean closed;
     AiOcrAnalyzer(Context context)throws Exception{tess=OcrStudio.create(context,TessBaseAPI.PageSegMode.PSM_SPARSE_TEXT);}
     JSONArray analyze(Ink.Doc doc,Ink.Page page,BooleanSupplier allowed)throws Exception{
         JSONArray results=new JSONArray();HashSet<String> ids=new HashSet<>();
@@ -34,6 +35,6 @@ final class AiOcrAnalyzer implements AutoCloseable {
             }finally{if(it!=null)it.delete();image.recycle();tess.clear();}
         }return results;
     }
-    public void close(){tess.recycle();}
-    void stop(){tess.stop();}
+    public synchronized void close(){if(!closed){closed=true;tess.recycle();}}
+    synchronized void stop(){if(!closed)tess.stop();}
 }
