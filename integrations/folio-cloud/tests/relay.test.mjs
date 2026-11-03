@@ -1,6 +1,7 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {DatabaseSync} from 'node:sqlite';import {readFileSync,readdirSync,writeFileSync} from 'node:fs';
 import {pair,deviceForOwner,authenticate,submit,claim,reply,result,seal,open,roleToken,encode,invoke,getProfile,storeProfile} from '../lib/relay.mjs';
 import {layout,sample} from '../lib/handwriting.mjs';import {rpc,tools,call} from '../lib/mcp.mjs';
+import {importTrainingSample} from '../lib/training.mjs';
 function environment(){
  const sqlite=new DatabaseSync(':memory:');
  for(const f of readdirSync(new URL('../drizzle/',import.meta.url)).filter(x=>x.endsWith('.sql')))sqlite.exec(readFileSync(new URL('../drizzle/'+f,import.meta.url),'utf8'));
@@ -27,6 +28,29 @@ test('stored handwriting pressure replays safely on already-installed Folio',()=
  assert.deepEqual(points.map(p=>p[2]),[.02000001,.02000001,.02000001,2,2,1,1]);
  assert(points.every(p=>Math.fround(p[2])>=.02&&Math.fround(p[2])<=2));
  assert.equal(glyph.paths[0][0][2],source[0], 'saved samples are never rewritten');
+});
+test('paired tablet imports encrypted setup samples into the owner profile, with safe retries',async()=>{
+ const env=environment(),a=await pair(env,'alice','https://test.invalid'),b=await pair(env,'bob','https://test.invalid');
+ const auth=new Request('https://test.invalid',{headers:{authorization:'Bearer '+await roleToken(a.token,'device',a.room)}});
+ const session=await authenticate(env,auth,a,'device'),id='a'.repeat(32);
+ await storeProfile(env,'alice','my-handwriting',{samples:{'а':{advance:1,paths:[[[0,0,1],[1,1,1]]]}}});
+ const raw={text:'Привет',strokes:[{points:[10,20,.02,0,0,25,45,.8,0,0]}]};
+ const body={id,envelope:await seal(a.token,raw,'folio:training:'+id)};
+ assert.equal((await importTrainingSample(env,session,body)).stored,true);
+ const profile=await getProfile(env,'alice','my-handwriting');assert.deepEqual(Object.keys(profile.samples).sort(),['а','Привет'].sort());
+ assert.equal(Object.keys((await getProfile(env,'bob','my-handwriting')).samples).length,0);
+ profile.samples['Привет']={advance:1,paths:[[[0,0,.5],[1,1,.5]]]};await storeProfile(env,'alice','my-handwriting',profile);
+ assert.equal((await importTrainingSample(env,session,body)).already_saved,true);
+ assert.equal((await getProfile(env,'alice','my-handwriting')).samples['Привет'].paths[0][0][2],.5,'a retry must not overwrite a later edit');
+ const changed={...body,envelope:await seal(a.token,{...raw,text:'мир'},'folio:training:'+id)};
+ await assert.rejects(importTrainingSample(env,session,changed),e=>e.status===409);
+ const wrong={...body,envelope:await seal(b.token,raw,'folio:training:'+id)};
+ await assert.rejects(importTrainingSample(env,session,wrong),e=>e.status===400);
+ const client=new Request('https://test.invalid',{headers:{authorization:'Bearer '+await roleToken(a.token,'client',a.room)}});
+ await assert.rejects(authenticate(env,client,a,'device'));
+ const invalid={id:'b'.repeat(32),envelope:await seal(a.token,{text:'x',strokes:[{points:[1,1,9,0,0,3,9,1,0,0]}]},'folio:training:'+'b'.repeat(32))};
+ await assert.rejects(importTrainingSample(env,session,invalid),e=>e.status===400);
+ assert.equal(Object.keys((await getProfile(env,'alice','my-handwriting')).samples).length,2);
 });
 test('notebook learning requests bounded regions and stores original vector examples per account',async()=>{
  const env=environment();await pair(env,'alice','https://test.invalid');const s=await deviceForOwner(env,'alice');await claim(env,s);

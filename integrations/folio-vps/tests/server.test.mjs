@@ -54,6 +54,11 @@ test('private server: setup, OAuth PKCE, encrypted tablet queue and portable pro
    const headers={authorization:'Bearer '+token.access_token,'content-type':'application/json'};
    let list=await request('/mcp',{method:'POST',headers,body:JSON.stringify({jsonrpc:'2.0',id:2,method:'tools/list'})});assert.equal(list.status,200);assert.equal((await list.json()).result.tools.length,11);
    const deviceHeaders={'oai-sites-authorization':'Bearer '+c.service_token,authorization:'Bearer '+await roleToken(c.token,'device',c.room),'content-type':'application/json'};
+   const trainingId='b'.repeat(32),training={text:'H₂O',strokes:[{points:[10,20,.02,0,0,30,40,.8,0,0]}]};
+   const trainingResponse=await request('/relay/v1/training',{method:'POST',headers:deviceHeaders,body:JSON.stringify({room:c.room,id:trainingId,envelope:await seal(c.token,training,'folio:training:'+trainingId)})});
+   assert.equal(trainingResponse.status,200,await trainingResponse.clone().text());
+   const trained=await (await request('/api/profiles?name=my-handwriting')).json();assert(trained.profile.samples['H₂O']);
+   const immediate=await request('/relay/v1/poll',{method:'POST',headers:deviceHeaders,body:JSON.stringify({room:c.room,wait:false})});assert.equal((await immediate.json()).idle,true);
    const poll=()=>request('/relay/v1/poll',{method:'POST',headers:deviceHeaders,body:JSON.stringify({room:c.room})});
    const pending=poll();await new Promise(r=>setTimeout(r,100));
    const called=request('/mcp',{method:'POST',headers,body:JSON.stringify({jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'folio_status',arguments:{}}})});

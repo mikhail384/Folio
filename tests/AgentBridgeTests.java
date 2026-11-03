@@ -22,6 +22,7 @@ public final class AgentBridgeTests {
             q.put("revision",bridge.revision()).put("strokes",new JSONArray("[{points:[[1,2]]},{points:[[1e100,2]]}]"));check(post("ink",q.toString(),token,"").startsWith("HTTP/1.1 400"),"invalid final stroke rejected atomically");check(a.canvas.page.strokes.size()==2,"no partial batch");
             q.put("operation_id","network_test_123");JSONObject undone=data(post("undo",q.toString(),token,""));check(undone.getInt("removed_strokes")==1&&a.canvas.page.strokes.get(0)==user,"network undo keeps user strokes");
             a.canvas.penId=3;check(post("snapshot","{}",token,"").startsWith("HTTP/1.1 409"),"active pen gesture blocks snapshot/write");a.canvas.penId=-1;
+            a.setupOpen=true;check(post("state","{}",token,"").startsWith("HTTP/1.1 409"),"setup screen cannot be mistaken for an open canvas");a.setupOpen=false;
             a.resumed=false;check(post("state","{}",token,"").startsWith("HTTP/1.1 409"),"background activity denies access");
         }finally{bridge.pause();}
         check(bridge.server==null,"listener closed on pause");System.out.println("PASS "+checks+" real LAN HTTP/auth/origin/foreground/version/idempotency/atomic ink/selective undo checks; Android UI and persistence substituted");

@@ -54,7 +54,7 @@ final class AgentBridge {
     }
     JSONObject handle(String route,JSONObject request,int generation)throws Exception {
         if(generation!=epoch||!enabled()||!a.resumed||a.isDestroyed())throw new Fault(409,"Folio connection is inactive");
-        if(a.current==null||a.canvas==null||a.intro!=null||a.launch!=null)throw new Fault(409,"Open a notebook in Folio");
+        if(a.current==null||a.canvas==null||a.intro!=null||a.launch!=null||a.setupOpen)throw new Fault(409,"Open a notebook in Folio");
         NotesView v=a.canvas;Ink.Page page=v.page;
         if(route.equals("/v1/state"))return state();
         if(v.penId!=-1||v.draft!=null||v.gestureBefore!=null||v.moving)throw new Fault(409,"Finish the current pen gesture first");
@@ -86,6 +86,10 @@ final class AgentBridge {
         }throw new Fault(404,"Unknown Folio operation");
     }
     String displayStatus(){return cloud.configured()?cloud.status:status;}
+    String trainingTarget(){try{if(!cloud.configured())return "";JSONObject p=AgentCloud.validate(a.prefs.getString("agent_cloud",""));return p.getString("url")+"|"+p.getString("room");}catch(Exception ignored){return "";}}
+    boolean importConnection(boolean enable){
+        try{ClipboardManager clip=(ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE);if(clip==null||!clip.hasPrimaryClip()||clip.getPrimaryClip().getItemCount()==0)throw new IllegalArgumentException();CharSequence value=clip.getPrimaryClip().getItemAt(0).getText();if(value==null)throw new IllegalArgumentException();JSONObject config=AgentCloud.validate(value.toString());pause();SharedPreferences.Editor edit=a.prefs.edit().putString("agent_cloud",config.toString());if(enable)edit.putBoolean("agent_enabled",true);edit.apply();if(enabled()&&a.resumed)resume();a.toast(enabled()?"Облачное подключение сохранено":"Подключение сохранено. Включите доступ к холсту");return true;}catch(Exception error){a.toast("Скопируйте подключение на странице Folio Cloud и вставьте его целиком");return false;}
+    }
     void show(){
         LinearLayout box=a.column();Studio.addCard(a,box,Studio.row(a,"pen","ChatGPT / Codex","Чтение открытого холста, рукописные записи и рисунки",null));
         LinearLayout row=Studio.row(a,"cloud","Доступ к холсту","Для разных сетей подключите облако. VPN можно оставить включённым. Доступ действует, пока Folio открыт.",null);
@@ -93,7 +97,7 @@ final class AgentBridge {
         Studio.Toggle toggle=new Studio.Toggle(a,enabled(),on->{a.prefs.edit().putBoolean("agent_enabled",on).apply();if(on)resume();else pause();info.setText(displayStatus()+"\n"+url());});row.addView(toggle,new LinearLayout.LayoutParams(a.dp(50),a.dp(48)));Studio.addCard(a,box,row);a.pad(info,0,16);box.addView(info);
         info.postDelayed(new Runnable(){public void run(){if(info.isAttachedToWindow()){info.setText(displayStatus()+"\n"+url());info.postDelayed(this,1000);}}},1000);
         box.addView(a.pill("Открыть страницу подключения",true,()->a.startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse(cloud.configured()?url():AgentCloud.ORIGIN)))));
-        box.addView(a.pill("Вставить облачное подключение",false,()->{try{ClipboardManager clip=(ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE);if(!clip.hasPrimaryClip())throw new IllegalArgumentException();String raw=clip.getPrimaryClip().getItemAt(0).getText().toString();JSONObject config=AgentCloud.validate(raw);pause();a.prefs.edit().putString("agent_cloud",config.toString()).apply();if(enabled())resume();info.setText(displayStatus()+"\n"+url());a.toast(enabled()?"Облачное подключение сохранено":"Подключение сохранено. Включите доступ к холсту");}catch(Exception error){a.toast("Скопируйте подключение на странице Folio Cloud и вставьте его целиком");}}));
+        box.addView(a.pill("Вставить облачное подключение",false,()->{importConnection(false);info.setText(displayStatus()+"\n"+url());}));
         box.addView(a.pill("Скопировать подключение для ПК",false,()->{try{String config=cloud.configured()?cloud.profile().toString():new JSONObject().put("url",url()).put("token",token()).toString();((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Folio connection",config));a.toast("Вставьте подключение в настройку плагина на ПК");}catch(Exception ignored){}}));
         box.addView(a.pill("Новый ключ подключения",false,()->{if(cloud.configured()){a.startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse(url())));return;}pause();a.prefs.edit().remove("agent_token").apply();token();if(enabled())resume();info.setText(displayStatus()+"\n"+url());a.toast("Старое подключение отключено");}));
         TextView help=a.text("Облачное подключение работает по HTTPS из разных сетей. Общая Wi-Fi сеть и отключение VPN не нужны.\n\nВ плагине сначала прочитайте холст, затем задайте место и текст. Мои записи состоят из обычных штрихов Folio и отменяются отдельной командой.\n\nДля личного почерка напишите букву или слово, выделите лассо и попросите плагин запомнить образец.",13,Studio.MUTED,false);a.pad(help,0,16);box.addView(help);

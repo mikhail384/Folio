@@ -5,7 +5,7 @@ import org.json.*;import java.net.*;import java.io.*;import java.nio.charset.Sta
 final class AgentCloud {
     static final String ORIGIN="https://folio-canvas-link.mikhailllm.chatgpt.site";
     static final String VPS_ORIGIN="https://31-77-128-190.cdn-one.org:17443";
-    final AgentBridge bridge;volatile boolean running;volatile HttpURLConnection connection;volatile String status="Облако не подключено";Thread thread;
+    final AgentBridge bridge;volatile boolean running;volatile HttpURLConnection connection;volatile String status="Облако не подключено",trainingStatus="Образцы сохраняются на устройстве";Thread thread;
     AgentCloud(AgentBridge bridge){this.bridge=bridge;}
     boolean configured(){return !bridge.a.prefs.getString("agent_cloud","").isEmpty();}
     JSONObject profile()throws Exception{return new JSONObject(bridge.a.prefs.getString("agent_cloud","{}"));}
@@ -19,8 +19,16 @@ final class AgentCloud {
         HttpURLConnection c=(HttpURLConnection)new URL(config.getString("url")+"/relay/v1/"+route).openConnection();connection=c;c.setInstanceFollowRedirects(false);c.setConnectTimeout(7000);c.setReadTimeout(14000);c.setRequestMethod("POST");c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json");c.setRequestProperty("Authorization","Bearer "+AgentCrypto.role(config.getString("token"),"device",config.getString("room")));c.setRequestProperty("OAI-Sites-Authorization","Bearer "+config.getString("service_token"));body.put("room",config.getString("room"));byte[] bytes=body.toString().getBytes(StandardCharsets.UTF_8);c.setFixedLengthStreamingMode(bytes.length);
         try{try(OutputStream out=c.getOutputStream()){out.write(bytes);}int code=c.getResponseCode();if(code!=200)throw new IOException(code==401||code==403?"Нужно заново скопировать облачное подключение":"Облако недоступно · HTTP "+code);ByteArrayOutputStream out=new ByteArrayOutputStream();try(InputStream in=c.getInputStream()){byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1){out.write(buffer,0,n);if(out.size()>8*1024*1024)throw new IOException("Слишком большая команда");}}return new JSONObject(out.toString("UTF-8"));}finally{c.disconnect();if(connection==c)connection=null;}
     }
-    void loop(int generation){int delay=1000;try{final JSONObject config=validate(bridge.a.prefs.getString("agent_cloud",""));while(active(generation))try{
-        JSONObject task=post(config,"poll",new JSONObject());if(!active(generation))break;status="Облако подключено · доступ из разных сетей";delay=1000;if(task.optBoolean("idle",false))continue;
+    boolean uploadTraining(JSONObject config,int generation)throws Exception{
+        HandwritingTraining store=bridge.a.handwritingTraining;if(store==null)return false;String target=config.getString("url")+"|"+config.getString("room");JSONObject item=store.next(target);if(item==null)return false;
+        String id=item.getString("id");JSONObject payload=new JSONObject().put("text",item.getString("text")).put("strokes",item.getJSONArray("strokes"));
+        JSONObject response=post(config,"training",new JSONObject().put("id",id).put("envelope",AgentCrypto.seal(config.getString("token"),payload,"folio:training:"+id)));
+        if(active(generation)&&id.equals(response.optString("id"))&&response.optBoolean("stored")){store.acknowledge(id);trainingStatus="Образец сохранён в облачном профиле";}
+        return true;
+    }
+    void loop(int generation){int delay=1000;long trainingRetry=0;try{final JSONObject config=validate(bridge.a.prefs.getString("agent_cloud",""));while(active(generation))try{
+        boolean uploaded=false;long now=System.currentTimeMillis();if(now>=trainingRetry){try{uploaded=uploadTraining(config,generation);trainingRetry=now+(uploaded?0:4000);}catch(Exception error){trainingStatus="Образцы на устройстве · ожидают отправки";trainingRetry=now+30000;}}
+        JSONObject poll=new JSONObject();if(uploaded)poll.put("wait",false);JSONObject task=post(config,"poll",poll);if(!active(generation))break;status="Облако подключено · доступ из разных сетей";delay=1000;if(task.optBoolean("idle",false))continue;
         String id=task.getString("id");JSONObject plain=AgentCrypto.open(config.getString("token"),task.getJSONObject("envelope"),"folio:"+id+":request");if(!active(generation))break;
         FutureTask<JSONObject> action=new FutureTask<>(()->bridge.handle("/v1/"+plain.getString("route"),plain.getJSONObject("payload"),generation));bridge.a.ui.post(action);JSONObject response=new JSONObject();
         try{response.put("ok",true).put("result",action.get(15,TimeUnit.SECONDS));}catch(Exception error){action.cancel(false);Throwable cause=error instanceof ExecutionException?error.getCause():error;response.put("ok",false).put("status",cause instanceof AgentBridge.Fault?((AgentBridge.Fault)cause).code:409).put("error",cause.getMessage()==null?"Холст занят":cause.getMessage());}

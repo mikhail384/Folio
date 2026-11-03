@@ -8,6 +8,7 @@ import {openStorage} from './storage.mjs';
 import {createOidc} from './oidc.mjs';
 import {pair,authenticate,claim,reply,result,submit,deviceForOwner,listProfiles,getProfile,storeProfile,ApiError} from '../folio-cloud/lib/relay.mjs';
 import {rpc} from '../folio-cloud/lib/mcp.mjs';
+import {importTrainingSample} from '../folio-cloud/lib/training.mjs';
 import {validateProfile} from '../folio-cloud/lib/profile-archive.mjs';
 
 const scrypt=promisify(scryptCallback),here=fileURLToPath(new URL('.',import.meta.url));
@@ -56,12 +57,14 @@ export function createApplication({origin,dataDir,setupToken,allowTestRedirect=f
     }
     if(path.startsWith('/relay/v1/')){
       if(req.method!=='POST'||!equal(req.headers['oai-sites-authorization']||'','Bearer '+secrets.serviceToken))throw new ApiError(401,'Подключение отклонено');
-      const op=path.slice('/relay/v1/'.length);if(!['poll','reply','request','result'].includes(op))throw new ApiError(404,'Unknown route');
+      const op=path.slice('/relay/v1/'.length);if(!['poll','reply','training','request','result'].includes(op))throw new ApiError(404,'Unknown route');
       const body=await readJson(req),headers=new Headers();if(req.headers.authorization)headers.set('authorization',req.headers.authorization);
-      const session=await authenticate(env,new Request(origin+path,{headers}),body,['poll','reply'].includes(op)?'device':'client');
+      const session=await authenticate(env,new Request(origin+path,{headers}),body,['poll','reply','training'].includes(op)?'device':'client');
       if(op==='request'){send(res,200,await submit(env,session,body.id,body.envelope));return;}
       if(op==='result'){send(res,200,await result(env,session,body.id));return;}
       if(op==='reply'){send(res,200,await reply(env,session,body));return;}
+      if(op==='training'){send(res,200,await importTrainingSample(env,session,body));return;}
+      if(body.wait===false){send(res,200,await claim(env,session));return;}
       const until=Date.now()+9000;do{if(req.aborted||res.destroyed)return;const task=await claim(env,session);if(!task.idle){send(res,200,task);return;}await new Promise(r=>setTimeout(r,600));}while(Date.now()<until);send(res,200,{idle:true});return;
     }
     if(path==='/api/setup'&&req.method==='POST'){
