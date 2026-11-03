@@ -1,7 +1,7 @@
-# Folio Canvas · плагин 0.3.0
+# Folio Canvas · плагин 0.3.1
 
 Доступ к открытому холсту Folio из разных сетей через HTTPS. VPN остаётся включённым.
-Нужен Folio 1.18.0-preview.1. Общая Wi-Fi сеть, проброс портов и ADB не нужны.
+Нужен Folio 1.18.0-preview.1 или новее. Общая Wi-Fi сеть, проброс портов и ADB не нужны.
 
 ## Подключение планшета
 
@@ -22,7 +22,7 @@
 
 ## Локальный Codex на ПК
 
-1. Распакуйте Folio-Canvas-Plugin-0.3.0.zip.
+1. Распакуйте Folio-Canvas-Plugin-0.3.1.zip.
 2. Запустите Install-Codex-Plugin.cmd (Python 3.11+ и Codex CLI).
 3. Запустите folio-plugin/Setup-Folio-Plugin.cmd и вставьте ту же строку подключения.
 4. Откройте новый чат Codex и включите Folio Canvas.

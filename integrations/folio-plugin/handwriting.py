@@ -5,6 +5,12 @@ Personal samples keep their original paths. This is glyph composition, not a tra
 """
 import math
 
+def _replay_pressure(value):
+    # Folio 1.18 compares float pressure against a double 0.02; keep even
+    # rounded or imported minimum-pressure samples above that boundary.
+    pressure = value if type(value) in (int, float) and math.isfinite(value) else 1
+    return max(.02000001, min(2, round(pressure, 4)))
+
 GLYPHS = {
  'A':'0,10 5,0 10,10|2,6 8,6', 'B':'0,10 0,0 6,0 9,2 8,4 0,5 7,5 10,7 8,10 0,10',
  'C':'10,1 7,0 2,1 0,5 2,9 7,10 10,9','D':'0,10 0,0 5,0 9,2 10,5 9,8 5,10 0,10',
@@ -91,7 +97,7 @@ def layout(text,x,y,height=28,width=2.2,color='#28344b',max_width=900,samples=No
         if x>x0 and x+advance>x0+max_width:x=x0;y+=height*1.65
         for path in glyph['paths']:
             if len(result)>=2000 or sum(len(s['points']) for s in result)+len(path)>100000:raise ValueError('Надпись слишком большая; разделите её на части')
-            result.append({'tool':'fountain','color':color,'width':width,'points':[[round(x+p[0]*height,3),round(y+p[1]*height,3),round(p[2],4)] for p in path]})
+            result.append({'tool':'fountain','color':color,'width':width,'points':[[round(x+p[0]*height,3),round(y+p[1]*height,3),_replay_pressure(p[2] if len(p)>2 else None)] for p in path]})
         x+=advance;i+=len(token)
     if not result or len(result)>2000 or sum(len(s['points']) for s in result)>100000:raise ValueError('Надпись слишком большая; разделите её на части')
     return result

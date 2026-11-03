@@ -40,6 +40,14 @@ class HandwritingTests(unittest.TestCase):
             self.assertTrue(layout(char,0,0));
     def test_personal_exact_geometry(self):
         glyph=sample_from_selection([{'points':[10,20,1,0,0,20,40,.5,0,0]}]);path=layout('я',100,200,20,samples={'я':glyph})[0]['points'];self.assertEqual(path,[[100,200,1],[110,220,.5]])
+    def test_personal_pressure_replays_safely_on_installed_folio(self):
+        import struct
+        pressures=[.019999999552965164,.02,0,2,3,float('nan'),None]
+        glyph={'advance':1,'paths':[[[i,i,p] for i,p in enumerate(pressures)]]}
+        points=layout('П',10,20,samples={'П':glyph})[0]['points']
+        self.assertEqual([p[2] for p in points],[.02000001,.02000001,.02000001,2,2,1,1])
+        self.assertTrue(all(.02<=struct.unpack('f',struct.pack('f',p[2]))[0]<=2 for p in points))
+        self.assertEqual(glyph['paths'][0][0][2],pressures[0])
     def test_missing_personal_has_no_fake_fallback(self):
         with self.assertRaises(ValueError):layout('АБ',0,0,samples={'А':{'paths':[[[0,0,1],[1,1,1]]],'advance':1}})
     def test_rejects_large_and_unknown(self):

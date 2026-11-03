@@ -23,7 +23,7 @@ public final class AgentInk {
             String color=item.optString("color","#28344b");if(!color.matches("#[0-9a-fA-F]{6}"))throw new IllegalArgumentException("Expected #RRGGBB color");s.color=(int)(0xff000000L|Long.parseLong(color.substring(1),16));
             double width=item.optDouble("width",2.2);if(!Double.isFinite(width)||width<.3||width>80)throw new IllegalArgumentException("Width must be 0.3..80");s.width=(float)width;
             JSONArray path=item.getJSONArray("points");points+=path.length();if(path.length()<1||points>100000)throw new IllegalArgumentException("Expected 1..100000 points in a batch");
-            for(int n=0;n<path.length();n++){JSONArray p=path.getJSONArray(n);if(p.length()<2||p.length()>4)throw new IllegalArgumentException("A point is [x,y,pressure?,roll?]");float x=number(p,0),y=number(p,1),pressure=p.length()>2?number(p,2):1,roll=p.length()>3?number(p,3):0;if(pressure<.02||pressure>2||Math.abs(roll)>Math.PI*2)throw new IllegalArgumentException("Invalid pressure or roll");s.points.add(new Ink.Pt(x,y,pressure,0,roll,0));}
+            for(int n=0;n<path.length();n++){JSONArray p=path.getJSONArray(n);if(p.length()<2||p.length()>4)throw new IllegalArgumentException("A point is [x,y,pressure?,roll?]");float x=number(p,0),y=number(p,1),pressure=p.length()>2?number(p,2):1,roll=p.length()>3?number(p,3):0;if(pressure<.02f||pressure>2f||Math.abs(roll)>(float)(Math.PI*2))throw new IllegalArgumentException("Invalid pressure or roll");s.points.add(new Ink.Pt(x,y,pressure,0,roll,0));}
             result.add(s);
         }return result;
     }
