@@ -38,7 +38,7 @@ export async function call(env,uid,name,a={}){
  const payload={document_id:a.document_id,page_id:a.page_id,revision:a.revision,operation_id:a.operation_id||crypto.randomUUID().replaceAll('-','')};
  if(name==='folio_undo_agent_write'){if(!a.operation_id)throw new Error('Укажите operation_id записи ИИ');return invoke(env,uid,'undo',payload);}
  if(name==='folio_draw_ink')return invoke(env,uid,'ink',{...payload,strokes:a.strokes});
- if(name==='folio_write_text'){const style=a.style||'neat';if(!['neat','personal'].includes(style))throw new Error('Unknown handwriting style');const samples=style==='personal'?(await getProfile(env,uid,a.profile||'my-handwriting')).samples:null;return invoke(env,uid,'ink',{...payload,strokes:layout(a.text,a.x,a.y,a.height??28,a.width??2.2,a.color||'#28344b',a.max_width??900,samples)});}
+ if(name==='folio_write_text'){const style=a.style||'neat';if(!['neat','personal'].includes(style))throw new Error('Unknown handwriting style');const profile=a.profile||'my-handwriting';let samples=null;if(style==='personal'){const manual=(await getProfile(env,uid,profile)).samples;samples=profile==='my-handwriting'?{...(await getProfile(env,uid,'my-handwriting-auto')).samples,...manual}:manual;}return invoke(env,uid,'ink',{...payload,strokes:layout(a.text,a.x,a.y,a.height??28,a.width??2.2,a.color||'#28344b',a.max_width??900,samples)});}
  throw new Error('Unknown Folio tool');
 }
 export async function rpc(env,request,body){const {id,method,params={}}=body;let result;

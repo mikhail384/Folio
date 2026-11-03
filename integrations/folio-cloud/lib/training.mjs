@@ -17,13 +17,18 @@ export async function importTrainingSample(env,session,body){
       if(!points.slice(i,i+5).every(Number.isFinite)||Math.abs(points[i])>10000000||Math.abs(points[i+1])>10000000||points[i+2]<0||points[i+2]>2)throw new ApiError(400,'Некорректные точки образца');
     }
   }
-  const hash=await digest(JSON.stringify({text:label,strokes})),key='training-receipts/'+session.channel+'/'+body.id;
+  const onlyMissing=data.if_missing===true,hash=await digest(JSON.stringify(onlyMissing?{text:label,strokes,if_missing:true}:{text:label,strokes})),key='training-receipts/'+session.channel+'/'+body.id;
   const receipt=await env.BUCKET.get(key);
-  if(receipt){const saved=JSON.parse(await receipt.text());if(saved.hash!==hash)throw new ApiError(409,'Образец с таким идентификатором уже сохранён');return {id:body.id,stored:true,already_saved:true};}
+  if(receipt){const saved=JSON.parse(await receipt.text());if(saved.hash!==hash)throw new ApiError(409,'Образец с таким идентификатором уже сохранён');return {id:body.id,stored:true,already_saved:true,skipped:saved.skipped===true};}
   let glyph;try{glyph=sample(strokes);}catch(e){throw new ApiError(400,e.message||'Напишите образец крупнее');}
-  const current=validateProfile(await getProfile(env,session.owner,'my-handwriting'));
-  const clean=validateProfile({samples:{...current.samples,[label]:glyph}});
-  await storeProfile(env,session.owner,'my-handwriting',clean);
+  // Automatic OCR never writes the manually curated profile.  Keeping the stores
+  // separate also prevents concurrent tablet uploads from erasing manual edits.
+  const profile=onlyMissing?'my-handwriting-auto':'my-handwriting';
+  const current=validateProfile(await getProfile(env,session.owner,profile));
+  const manual=onlyMissing?validateProfile(await getProfile(env,session.owner,'my-handwriting')):null;
+  if(onlyMissing&&(Object.hasOwn(current.samples,label)||Object.hasOwn(manual.samples,label))){await env.BUCKET.put(key,JSON.stringify({hash,skipped:true}));return {id:body.id,stored:true,skipped:true,profile};}
+  let clean;try{clean=validateProfile({samples:{...current.samples,[label]:glyph}});}catch(e){if(!onlyMissing)throw e;await env.BUCKET.put(key,JSON.stringify({hash,skipped:true}));return {id:body.id,stored:true,skipped:true,reason:'auto_profile_full',profile};}
+  await storeProfile(env,session.owner,profile,clean);
   await env.BUCKET.put(key,JSON.stringify({hash}));
-  return {id:body.id,stored:true,profile:'my-handwriting'};
+  return {id:body.id,stored:true,profile};
 }

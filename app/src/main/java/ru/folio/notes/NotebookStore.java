@@ -18,16 +18,24 @@ public final class NotebookStore {
     final File root,assets;
     final NotebookNames names;
     final ExecutorService io=Executors.newSingleThreadExecutor();
+    private static final ConcurrentHashMap<String,Object> FILE_LOCKS=new ConcurrentHashMap<>();
+    private static Object fileLock(File f){return FILE_LOCKS.computeIfAbsent(f.getAbsolutePath(),k->new Object());}
     NotebookStore(Context c){context=c;root=new File(c.getFilesDir(),"notebooks");assets=new File(c.getFilesDir(),"assets");root.mkdirs();assets.mkdirs();names=new NotebookNames(root);}
     private static byte[] read(InputStream in,long max)throws IOException{ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[32768];int n;while((n=in.read(b))!=-1){if(out.size()+n>max)throw new IOException("Файл превышает допустимый размер");out.write(b,0,n);}return out.toByteArray();}
-    public ArrayList<Ink.Doc> load(){ArrayList<Ink.Doc> list=new ArrayList<>();File[] files=root.listFiles((d,n)->n.endsWith(".json"));if(files!=null)for(File f:files)try(InputStream in=new AtomicFile(f).openRead()){Ink.Doc d=Ink.Doc.parse(new JSONObject(new String(read(in,100L*1024*1024),StandardCharsets.UTF_8)));d.id=f.getName().replace(".json","");list.add(d);}catch(Exception e){android.util.Log.e("Folio","Notebook unreadable: "+f.getName(),e);}list.sort((a,b)->Long.compare(b.modified,a.modified));return list;}
-    public void write(Ink.Doc d)throws Exception{AtomicFile file=new AtomicFile(new File(root,d.id+".json"));FileOutputStream out=null;try{out=file.startWrite();out.write(d.json().toString().getBytes(StandardCharsets.UTF_8));file.finishWrite(out);}catch(Exception e){if(out!=null)file.failWrite(out);throw e;}}
+    public ArrayList<Ink.Doc> load(){return loadSelected(null);}
+    ArrayList<String> learningIds(SharedPreferences prefs){ArrayList<String> ids=new ArrayList<>();File[] files=root.listFiles((d,n)->n.endsWith(".json"));if(files!=null)for(File f:files){String id=f.getName().substring(0,f.getName().length()-5);try{if(AiLearningPermissions.allowed(prefs,id))ids.add(id);}catch(IllegalArgumentException ignored){}}return ids;}
+    Ink.Doc loadForLearning(String id,SharedPreferences prefs){
+        if(!AiLearningPermissions.allowed(prefs,id))return null;File path=new File(root,id+".json");
+        synchronized(fileLock(path)){if(!AiLearningPermissions.allowed(prefs,id))return null;try(InputStream in=new AtomicFile(path).openRead()){Ink.Doc doc=Ink.Doc.parse(new JSONObject(new String(read(in,100L*1024*1024),StandardCharsets.UTF_8)));doc.id=id;return AiLearningPermissions.allowed(prefs,id)?doc:null;}catch(Exception failure){android.util.Log.e("Folio","Notebook unreadable",failure);return null;}}
+    }
+    private ArrayList<Ink.Doc> loadSelected(SharedPreferences prefs){ArrayList<Ink.Doc> list=new ArrayList<>();File[] files=root.listFiles((d,n)->n.endsWith(".json"));if(files!=null)for(File f:files){String id=f.getName().substring(0,f.getName().length()-5);try{if(prefs!=null&&!AiLearningPermissions.allowed(prefs,id))continue;synchronized(fileLock(f)){if(prefs!=null&&!AiLearningPermissions.allowed(prefs,id))continue;try(InputStream in=new AtomicFile(f).openRead()){Ink.Doc d=Ink.Doc.parse(new JSONObject(new String(read(in,100L*1024*1024),StandardCharsets.UTF_8)));d.id=id;if(prefs==null||AiLearningPermissions.allowed(prefs,id))list.add(d);}}}catch(Exception e){android.util.Log.e("Folio","Notebook unreadable",e);}}list.sort((a,b)->Long.compare(b.modified,a.modified));return list;}
+    public void write(Ink.Doc d)throws Exception{File path=new File(root,d.id+".json");synchronized(fileLock(path)){AtomicFile file=new AtomicFile(path);FileOutputStream out=null;try{out=file.startWrite();out.write(d.json().toString().getBytes(StandardCharsets.UTF_8));file.finishWrite(out);}catch(Exception e){if(out!=null)file.failWrite(out);throw e;}}}
     void enqueueWrite(Ink.Doc snapshot,java.util.function.Consumer<Exception> completed){
         names.beginSave(snapshot.id);
         try{io.execute(()->{Exception failure=null;try{write(snapshot);}catch(Exception e){failure=e;}finally{names.endSave(snapshot.id);}completed.accept(failure);});}
         catch(RejectedExecutionException e){names.endSave(snapshot.id);throw e;}
     }
-    public void delete(Ink.Doc d){new AtomicFile(new File(root,d.id+".json")).delete();}
+    public void delete(Ink.Doc d){File path=new File(root,d.id+".json");synchronized(fileLock(path)){new AtomicFile(path).delete();}}
     public File asset(String name)throws IOException{if(!name.matches("[a-zA-Z0-9_-]+\\.(png|jpg|pdf|m4a)"))throw new IOException("Недопустимый ресурс");return new File(assets,name);}
     public Bitmap bitmap(String name,int max)throws IOException {BitmapFactory.Options bounds=new BitmapFactory.Options();bounds.inJustDecodeBounds=true;BitmapFactory.decodeFile(asset(name).toString(),bounds);if(bounds.outWidth<=0||bounds.outHeight<=0)throw new IOException("Не удалось открыть изображение");BitmapFactory.Options o=new BitmapFactory.Options();int sample=1;while(bounds.outWidth/sample>max||bounds.outHeight/sample>max)sample*=2;o.inSampleSize=sample;Bitmap b=BitmapFactory.decodeFile(asset(name).toString(),o);if(b==null)throw new IOException("Не удалось открыть изображение");return b;}
     public String addBitmap(Bitmap bitmap)throws IOException{String name=Ink.id()+".png";try(FileOutputStream out=new FileOutputStream(asset(name))){if(!bitmap.compress(Bitmap.CompressFormat.PNG,100,out))throw new IOException("Не удалось сохранить изображение");}return name;}

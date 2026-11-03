@@ -42,6 +42,13 @@ test('paired tablet imports encrypted setup samples into the owner profile, with
  profile.samples['Привет']={advance:1,paths:[[[0,0,.5],[1,1,.5]]]};await storeProfile(env,'alice','my-handwriting',profile);
  assert.equal((await importTrainingSample(env,session,body)).already_saved,true);
  assert.equal((await getProfile(env,'alice','my-handwriting')).samples['Привет'].paths[0][0][2],.5,'a retry must not overwrite a later edit');
+ const autoId='c'.repeat(32),auto={text:'Привет',strokes:raw.strokes,if_missing:true};
+ assert.equal((await importTrainingSample(env,session,{id:autoId,envelope:await seal(a.token,auto,'folio:training:'+autoId)})).skipped,true);
+ assert.equal((await getProfile(env,'alice','my-handwriting')).samples['Привет'].paths[0][0][2],.5,'automatic analysis must not replace a confirmed sample');
+ const id2='d'.repeat(32),newAuto={text:'слово',strokes:raw.strokes,if_missing:true};
+ assert.equal((await importTrainingSample(env,session,{id:id2,envelope:await seal(a.token,newAuto,'folio:training:'+id2)})).profile,'my-handwriting-auto');
+ assert.deepEqual(Object.keys((await getProfile(env,'alice','my-handwriting-auto')).samples),['слово']);
+ assert.equal((await getProfile(env,'alice','my-handwriting')).samples['слово'],undefined,'automatic samples must never modify the manual profile');
  const changed={...body,envelope:await seal(a.token,{...raw,text:'мир'},'folio:training:'+id)};
  await assert.rejects(importTrainingSample(env,session,changed),e=>e.status===409);
  const wrong={...body,envelope:await seal(b.token,raw,'folio:training:'+id)};
@@ -51,6 +58,15 @@ test('paired tablet imports encrypted setup samples into the owner profile, with
  const invalid={id:'b'.repeat(32),envelope:await seal(a.token,{text:'x',strokes:[{points:[1,1,9,0,0,3,9,1,0,0]}]},'folio:training:'+'b'.repeat(32))};
  await assert.rejects(importTrainingSample(env,session,invalid),e=>e.status===400);
  assert.equal(Object.keys((await getProfile(env,'alice','my-handwriting')).samples).length,2);
+});
+test('personal writing merges automatic examples without overriding curated examples',async()=>{
+ const env=environment();await pair(env,'alice','https://test.invalid');const s=await deviceForOwner(env,'alice');await claim(env,s);
+ const manual={advance:1,paths:[[[0,0,.8],[1,1,.8]]]},automatic={advance:1,paths:[[[0,0,.4],[1,1,.4]]]};
+ await storeProfile(env,'alice','my-handwriting',{samples:{'я':manual}});await storeProfile(env,'alice','my-handwriting-auto',{samples:{'я':automatic,'ты':automatic}});
+ const promise=call(env,'alice','folio_write_text',{document_id:'d',page_id:'p',revision:'1',style:'personal',text:'я ты',x:0,y:0});
+ await new Promise(r=>setTimeout(r,40));const task=await claim(env,s),request=await open(s.key,task.envelope,'folio:'+task.id+':request');
+ assert.equal(request.payload.strokes[0].points[0][2],.8,'manual sample has priority');assert.equal(request.payload.strokes[1].points[0][2],.4,'new automatic sample is used');
+ await reply(env,s,{id:task.id,lease:task.lease,envelope:await seal(s.key,{ok:true,result:{added_strokes:2}},'folio:'+task.id+':response')});await promise;
 });
 test('notebook learning requests bounded regions and stores original vector examples per account',async()=>{
  const env=environment();await pair(env,'alice','https://test.invalid');const s=await deviceForOwner(env,'alice');await claim(env,s);
