@@ -7,6 +7,8 @@ install -o root -g folio-test -m 0644 "$lineage/fullchain.pem" "$target/fullchai
 install -o root -g folio-test -m 0640 "$lineage/privkey.pem" "$target/privkey.pem.new"
 mv -f "$target/fullchain.pem.new" "$target/fullchain.pem"
 mv -f "$target/privkey.pem.new" "$target/privkey.pem"
-if systemctl is-active --quiet folio-canvas-test-tls.service; then
+if systemctl is-active --quiet folio-gateway.service; then
+  systemctl restart folio-gateway.service
+elif systemctl is-active --quiet folio-canvas-test-tls.service; then
   systemctl restart folio-canvas-test-tls.service
 fi

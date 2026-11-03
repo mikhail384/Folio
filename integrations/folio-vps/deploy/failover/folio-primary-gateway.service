@@ -1,0 +1,25 @@
+[Unit]
+Description=Folio primary for the failover gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=folio-mirror
+Group=folio-mirror
+Environment=NODE_ENV=production
+Environment=FOLIO_ORIGIN=https://109.66.236.217:17443
+Environment=FOLIO_DATA_DIR=/var/lib/folio-mirror/state
+Environment=FOLIO_PORT=18181
+Environment=FOLIO_CHECKPOINT_KEY_FILE=/var/lib/folio-mirror/checkpoint.key
+Environment=FOLIO_ARCHIVE_SCRIPT=/opt/folio-mirror/app/integrations/folio-vps/deploy/failover/archive.py
+ExecStart=/opt/folio-private/runtime/bin/node /opt/folio-mirror/app/integrations/folio-vps/deploy/failover/primary.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/folio-mirror
+
+[Install]
+WantedBy=multi-user.target

@@ -5,12 +5,12 @@ import java.util.*;
 
 /** Bounded prepared geometry; only visible blocks of a long stroke become Android paths. */
 final class CommittedInk {
-    static final int MAX_POINTS=350000,MAX_COMMANDS=100000,MAX_PATHS=384;
+    static final int MAX_POINTS=2000000,MAX_COMMANDS=800000,MAX_PATHS=4096;
     final LinkedHashMap<Ink.Stroke,StrokeChunks> shapes=new LinkedHashMap<>(64,.75f,true);
     final LinkedHashMap<StrokeChunks.Chunk,Path> paths=new LinkedHashMap<>(128,.75f,true);
     final IdentityHashMap<StrokeChunks.Chunk,Integer> costs=new IdentityHashMap<>();
     int points,commands;
-    StrokeChunks get(Ink.Stroke s){StrokeChunks shape=shapes.get(s);if(shape!=null&&shape.matches(s))return shape;if(shape!=null){points-=shape.count;shapes.remove(s);}shape=new StrokeChunks(s);shapes.put(s,shape);points+=shape.count;Iterator<Map.Entry<Ink.Stroke,StrokeChunks>> i=shapes.entrySet().iterator();while((points>MAX_POINTS||shapes.size()>1024)&&shapes.size()>1){Map.Entry<Ink.Stroke,StrokeChunks> e=i.next();points-=e.getValue().count;i.remove();}return shape;}
+    StrokeChunks get(Ink.Stroke s){StrokeChunks shape=shapes.get(s);if(shape!=null&&shape.matches(s))return shape;if(shape!=null){points-=shape.count;shapes.remove(s);}shape=new StrokeChunks(s);shapes.put(s,shape);points+=shape.count;Iterator<Map.Entry<Ink.Stroke,StrokeChunks>> i=shapes.entrySet().iterator();while((points>MAX_POINTS||shapes.size()>8192)&&shapes.size()>1){Map.Entry<Ink.Stroke,StrokeChunks> e=i.next();points-=e.getValue().count;i.remove();}return shape;}
     void alias(Ink.Stroke old,Ink.Stroke next){StrokeChunks geometry=shapes.remove(old);if(geometry!=null){StrokeChunks displaced=shapes.put(next,geometry);if(displaced!=null)points-=displaced.count;}}
     Path path(Ink.Stroke s,StrokeChunks.Chunk chunk){Path found=paths.get(chunk);if(found!=null)return found;Ink.Stroke fragment=chunk.fragment(s);InkRenderer.Ribbon ribbon=new InkRenderer.Ribbon();
         if(s.tool.equals("brush")||s.tool.equals("fountain")||s.tool.equals("pencil")||s.tool.equals("marker"))InkGeometry.sweep(fragment,ribbon);

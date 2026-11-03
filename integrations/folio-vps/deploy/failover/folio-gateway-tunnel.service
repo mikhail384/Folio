@@ -1,0 +1,18 @@
+[Unit]
+Description=Folio encrypted connection to the primary
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=folio-test
+Group=folio-test
+ExecStart=/usr/bin/ssh -N -T -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=10 -o ServerAliveCountMax=2 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/var/lib/folio-failover/known_hosts -i /var/lib/folio-failover/id_ed25519 -L 127.0.0.1:18181:127.0.0.1:18181 folio-mirror@31.77.128.190
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

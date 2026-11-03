@@ -1,0 +1,27 @@
+[Unit]
+Description=Folio HTTPS gateway and standby
+After=network-online.target folio-gateway-tunnel.service
+Wants=network-online.target folio-gateway-tunnel.service
+
+[Service]
+User=folio-test
+Group=folio-test
+Environment=NODE_ENV=production
+Environment=FOLIO_ORIGIN=https://109.66.236.217:17443
+Environment=FOLIO_FAILOVER_STATE=/var/lib/folio-failover
+Environment=FOLIO_CHECKPOINT_KEY_FILE=/var/lib/folio-failover/checkpoint.key
+Environment=FOLIO_ARCHIVE_SCRIPT=/opt/folio-canvas-test/app/integrations/folio-vps/deploy/failover/archive.py
+Environment=FOLIO_SERVER_SCRIPT=/opt/folio-canvas-test/app/integrations/folio-vps/server.mjs
+Environment=FOLIO_TLS_KEY=/opt/folio-canvas-test/tls/privkey.pem
+Environment=FOLIO_TLS_CERT=/opt/folio-canvas-test/tls/fullchain.pem
+ExecStart=/opt/folio-canvas-test/bin/node /opt/folio-canvas-test/app/integrations/folio-vps/deploy/failover/gateway.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/folio-failover
+
+[Install]
+WantedBy=multi-user.target

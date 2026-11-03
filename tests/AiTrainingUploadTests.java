@@ -24,6 +24,7 @@ public final class AiTrainingUploadTests {
             }});
             JSONObject config=new JSONObject().put("url","http://127.0.0.1:"+server.getLocalPort()).put("room",room).put("token",token).put("service_token","synthetic-token-for-tests");
             check(AgentEndpoints.allowed(AgentEndpoints.TEST_VPS)&&AgentEndpoints.automatic(AgentEndpoints.TEST_VPS),"updated test backend may receive automatic samples");
+            check(AgentEndpoints.SITE.equals(AgentEndpoints.TEST_VPS)&&AgentEndpoints.allowed(AgentEndpoints.LEGACY_SITE)&&AgentEndpoints.automatic(AgentEndpoints.LEGACY_SITE),"new default keeps existing Sites connections working");
             check(AgentEndpoints.allowed(AgentEndpoints.PREVIOUS_VPS)&&!AgentEndpoints.automatic(AgentEndpoints.PREVIOUS_VPS),"old server never receives automatic samples");
             check(!AgentEndpoints.allowed("https://109.66.236.217:17443.attacker.example")&&!AgentEndpoints.allowed("http://109.66.236.217:17443"),"untrusted host or cleartext is rejected");
             JSONObject item=new JSONObject().put("id",id).put("text","слово").put("strokes",new JSONArray("[{points:[0,0,1,0,0,10,20,1,0,0]}]"));
