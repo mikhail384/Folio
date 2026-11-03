@@ -2,12 +2,13 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {spawn,execFileSync} from 'node:child_process';
-import {mkdtempSync,mkdirSync,rmSync,writeFileSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,rmSync,writeFileSync,statSync,utimesSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createApplication} from '../server.mjs';
 import {createGateway} from '../deploy/failover/gateway-core.mjs';
+import {roleToken} from '../../folio-cloud/lib/relay.mjs';
 
 const here=resolve(fileURLToPath(new URL('..',import.meta.url)));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -34,6 +35,9 @@ test('gateway checkpoints real Folio sessions and profiles, promotes once, and k
     async function call(path,options={}){return fetch(base+path,{...options,headers:{cookie,origin,...options.headers}});}
     async function post(path,value){return call(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(value)});}
     const pairedResponse=await post('/api/session',{}),paired=await pairedResponse.json();assert.equal(pairedResponse.status,200,JSON.stringify(paired));assert.equal(paired.connection.url,origin);
+    const snapshot=join(standby,'latest.tar.gz'),old=new Date('2020-01-01T00:00:00Z');utimesSync(snapshot,old,old);const before=statSync(snapshot).mtimeMs,c=paired.connection;
+    const idle=await call('/relay/v1/poll',{method:'POST',headers:{'content-type':'application/json','oai-sites-authorization':'Bearer '+c.service_token,authorization:'Bearer '+await roleToken(c.token,'device',c.room)},body:JSON.stringify({room:c.room,wait:false})});
+    assert.equal(idle.status,200);assert.equal((await idle.json()).idle,true);assert.equal(statSync(snapshot).mtimeMs,before,'idle polling does not copy the entire profile store');
     const profile={samples:{'A':{advance:1,paths:[[[0,0,1],[1,1,.5]]]}}};
     assert.equal((await post('/api/profiles',{name:'mine',profile})).status,200);
     assert.equal((await call('/internal/checkpoint',{method:'POST'})).status,404);

@@ -14,6 +14,13 @@ function request(port,method,path,headers={},body=Buffer.alloc(0),timeout=45000,
 });}
 function durable(path,contents){const temp=path+'.'+randomUUID()+'.tmp';const fd=openSync(temp,'wx',0o600);try{writeFileSync(fd,contents);fsyncSync(fd);}finally{closeSync(fd);}renameSync(temp,path);if(process.platform!=='win32'){const dir=openSync(join(path,'..'),'r');try{fsyncSync(dir);}finally{closeSync(dir);}}}
 const readonly=path=>['/','/login','/setup','/app.js','/style.css','/favicon.svg','/profile-archive.mjs','/health','/api/session','/api/profiles'].includes(path)||path.startsWith('/.well-known/');
+function needsCheckpoint(method,path,response){
+  if(method==='GET'&&readonly(path))return false;
+  // An idle poll only refreshes the tablet's ephemeral last-seen timestamp.
+  // Checkpoint actual claimed tasks before acknowledging them to the tablet.
+  if(method==='POST'&&path==='/relay/v1/poll'&&response.status===200&&response.body.length<128){try{if(JSON.parse(response.body).idle===true)return false;}catch{}}
+  return true;
+}
 
 export function createGateway({origin,root,checkpointKey,archiveScript,primaryPort=18181,backupPort=18080,startBackup,probeMs=2500,probeTimeout=1500,misses=3}){
   mkdirSync(root,{recursive:true,mode:0o700});const latest=join(root,'latest.tar.gz'),modePath=join(root,'mode'),active=join(root,'active');
@@ -52,7 +59,7 @@ export function createGateway({origin,root,checkpointKey,archiveScript,primaryPo
     try{
       if(mode==='promoting')throw new Error('Switching');if(mode==='backup')await ensureBackup();const selected=mode,port=selected==='primary'?primaryPort:backupPort;
       const response=await request(port,req.method,req.url,headers,body,45000,16*1024*1024);
-      if(selected==='primary'&&!(req.method==='GET'&&readonly(path)))await checkpoint();
+      if(selected==='primary'&&needsCheckpoint(req.method,path,response))await checkpoint();
       if(mode!==selected)throw new Error('Uncertain request');
       const outgoing={...response.headers};delete outgoing.connection;delete outgoing['transfer-encoding'];outgoing['content-length']=String(response.body.length);res.writeHead(response.status,outgoing);res.end(response.body);
     }catch{if(!res.headersSent)res.writeHead(503,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify({error:'Folio временно переключается. Прочитайте холст перед повторением записи.'}));}
