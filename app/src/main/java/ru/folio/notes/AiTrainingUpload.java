@@ -3,6 +3,8 @@ import java.io.*;import java.net.*;import java.nio.charset.StandardCharsets;impo
 
 /** Same authenticated, encrypted relay as manual samples; no network is bypassed. */
 final class AiTrainingUpload {
+    // Until another backend advertises this protocol, only the updated Site is safe.
+    static boolean supportsAutomaticProfile(JSONObject config,String updatedOrigin){return config!=null&&updatedOrigin.equals(config.optString("url"));}
     volatile HttpURLConnection connection;
     void stop(){HttpURLConnection c=connection;if(c!=null)c.disconnect();}
     JSONObject send(JSONObject config,JSONObject item)throws Exception{

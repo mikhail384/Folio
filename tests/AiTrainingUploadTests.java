@@ -23,6 +23,8 @@ public final class AiTrainingUploadTests {
                 return new JSONObject().put("request",request).put("authorization",headers.get("authorization")).put("site",headers.get("oai-sites-authorization")).put("body",body);
             }});
             JSONObject config=new JSONObject().put("url","http://127.0.0.1:"+server.getLocalPort()).put("room",room).put("token",token).put("service_token","synthetic-token-for-tests");
+            check(AiTrainingUpload.supportsAutomaticProfile(config,config.getString("url")),"updated backend may receive automatic samples");
+            check(!AiTrainingUpload.supportsAutomaticProfile(config,"https://another-server.example"),"old server never receives automatic samples");
             JSONObject item=new JSONObject().put("id",id).put("text","слово").put("strokes",new JSONArray("[{points:[0,0,1,0,0,10,20,1,0,0]}]"));
             JSONObject response=new AiTrainingUpload().send(config,item),captured=received.get(5,TimeUnit.SECONDS),body=captured.getJSONObject("body");
             check(response.optBoolean("stored")&&response.optBoolean("skipped"),"accept stored/skipped receipt");
