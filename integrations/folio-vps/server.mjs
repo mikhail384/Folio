@@ -10,6 +10,7 @@ import {pair,authenticate,claim,reply,result,submit,deviceForOwner,listProfiles,
 import {rpc} from '../folio-cloud/lib/mcp.mjs';
 import {importTrainingSample} from '../folio-cloud/lib/training.mjs';
 import {validateProfile} from '../folio-cloud/lib/profile-archive.mjs';
+import {readExamples,storeExamples} from '../folio-cloud/lib/corpus.mjs';
 
 const scrypt=promisify(scryptCallback),here=fileURLToPath(new URL('.',import.meta.url));
 const encode=bytes=>Buffer.from(bytes).toString('base64url'),digest=text=>createHash('sha256').update(text).digest('hex');
@@ -49,6 +50,7 @@ export function createApplication({origin,dataDir,setupToken,allowTestRedirect=f
     if(path==='/.well-known/oauth-protected-resource'||path==='/.well-known/oauth-protected-resource/mcp'){send(res,200,{resource:oidc.resource,authorization_servers:[origin],scopes_supported:['folio']});return;}
     if(path==='/health'){send(res,200,{service:'Folio VPS',ready:!!secrets.passwordHash});return;}
     if(path==='/profile-archive.mjs'){send(res,200,readFileSync(resolve(here,'../folio-cloud/lib/profile-archive.mjs'),'utf8'),'text/javascript; charset=utf-8');return;}
+    if(path==='/training-archive.mjs'){send(res,200,readFileSync(resolve(here,'../folio-cloud/lib/training-archive.mjs'),'utf8'),'text/javascript; charset=utf-8');return;}
     if(path==='/mcp'){
       const auth=String(req.headers.authorization||''),token=auth.startsWith('Bearer ')?await oidc.provider.AccessToken.find(auth.slice(7)):null;
       if(!token||token.accountId!=='owner'||token.aud!==oidc.resource||!String(token.scope||'').split(' ').includes('folio')){send(res,401,{error:'Authentication required'},undefined,{'WWW-Authenticate':`Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource", scope="folio"`});return;}
@@ -86,6 +88,15 @@ export function createApplication({origin,dataDir,setupToken,allowTestRedirect=f
     }
     if(path==='/api/profiles'&&req.method==='GET'){
       requireWeb(req);const name=url.searchParams.get('name');if(!name)send(res,200,await listProfiles(env,'owner'));else send(res,200,{name,profile:validateProfile(await getProfile(env,'owner',name))});return;
+    }
+    if(path==='/api/training-corpus'&&req.method==='GET'){
+      requireWeb(req);send(res,200,await readExamples(env,'owner',url.searchParams.get('name')||'my-handwriting',url.searchParams.get('cursor')||'',4));return;
+    }
+    if(path==='/api/training-corpus'&&req.method==='POST'){
+      requireWeb(req);requirePostOrigin(req);const body=await readJson(req),document=body.document_id;
+      if(!Array.isArray(body.examples)||!body.examples.length||body.examples.length>2||body.examples.some(item=>!item||!['manual','ocr-reviewed'].includes(item.source)))throw new ApiError(400,'Импортируйте не более двух подтверждённых образцов за запрос');
+      const raw=body.examples.map(item=>({...item,reviewed:true,source:item.source==='ocr-reviewed'?'ocr':item.source==='manual'?'calibration':'invalid'}));
+      const saved=await storeExamples(env,'owner',body.name||'my-handwriting',document,raw);if(saved.skipped)throw new ApiError(400,'Неподдерживаемый образец');send(res,200,saved);return;
     }
     if(path==='/api/profiles'&&req.method==='POST'){
       requireWeb(req);requirePostOrigin(req);const body=await readJson(req),name=body.name;if(typeof name!=='string'||!/^[A-Za-z0-9_-]{1,48}$/.test(name))throw new ApiError(400,'Недопустимое имя профиля');const incoming=validateProfile(body.profile),current=validateProfile(await getProfile(env,'owner',name)),merged=validateProfile({samples:{...current.samples,...incoming.samples}});await storeProfile(env,'owner',name,merged);send(res,200,{imported:Object.keys(incoming.samples).length,total:Object.keys(merged.samples).length});return;

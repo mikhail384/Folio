@@ -41,7 +41,7 @@ final class AgentNotebook {
         if(b[2]-b[0]<1||b[3]-b[1]<1)throw new AgentBridge.Fault(400,"Область слишком мала");return b;
     }
     JSONObject library()throws Exception{
-        JSONArray docs=new JSONArray();for(Ink.Doc d:a.docs){if(docs.length()>=500)break;docs.put(new JSONObject().put("id",d.id).put("title",d.title).put("folder",d.folder).put("pages",d.pages.size()).put("revision",revision(d)));}
+        JSONArray docs=new JSONArray();for(Ink.Doc d:a.docs){if(docs.length()>=500)break;docs.put(new JSONObject().put("id",d.id).put("title",d.title).put("folder",d.folder).put("pages",d.pages.size()).put("revision",revision(d)).put("training_allowed",AiLearningPermissions.allowed(a.prefs,d.id)));}
         return new JSONObject().put("notebooks",docs).put("truncated",a.docs.size()>500);
     }
     JSONObject pages(JSONObject req)throws Exception{
@@ -84,5 +84,15 @@ final class AgentNotebook {
             result.put(new JSONObject().put("text",text).put("strokes",strokes));
         }
         return new JSONObject().put("document_id",doc.id).put("page_id",page.id).put("revision",revision(doc)).put("samples",result);
+    }
+    /** Capture document identity on the UI thread; disk reads happen on the calling worker. */
+    java.util.concurrent.Callable<JSONObject> trainingExamples(JSONObject req,AgentBridge bridge,int generation)throws Exception{
+        String doc=req.getString("document_id");boolean calibration=AiCorpusStore.CALIBRATION.equals(doc);if(!calibration)document(doc);
+        String target=bridge.trainingTarget();if(target.isEmpty())throw new AgentBridge.Fault(409,"Сначала подключите облако");
+        String cursor=req.optString("cursor","");int limit=req.optInt("limit",8);
+        java.io.File root=new java.io.File(a.getFilesDir(),"ai-training-corpus");
+        return ()->{try{return new AiCorpusStore(root).page(doc,cursor,limit,target,()->bridge.epoch==generation&&bridge.enabled()&&target.equals(bridge.trainingTarget())&&(calibration||AiLearningPermissions.allowed(a.prefs,doc)));}
+            catch(SecurityException e){throw new AgentBridge.Fault(403,"Нет разрешения на обучение по этой тетради");}
+            catch(IllegalArgumentException e){throw new AgentBridge.Fault(400,e.getMessage());}};
     }
 }

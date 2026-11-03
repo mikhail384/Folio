@@ -11,6 +11,7 @@ export function openStorage(directory){
   CREATE TABLE IF NOT EXISTS folio_tasks (id TEXT PRIMARY KEY,channel TEXT NOT NULL,state INTEGER NOT NULL,lease TEXT,created INTEGER NOT NULL,expires INTEGER NOT NULL);
   CREATE INDEX IF NOT EXISTS folio_tasks_channel_idx ON folio_tasks(channel,state,created);
   CREATE TABLE IF NOT EXISTS folio_profiles (owner TEXT NOT NULL,name TEXT NOT NULL,object TEXT NOT NULL,PRIMARY KEY(owner,name));
+  CREATE TABLE IF NOT EXISTS folio_training_corpus (owner TEXT NOT NULL,name TEXT NOT NULL,id TEXT NOT NULL,object TEXT NOT NULL,PRIMARY KEY(owner,name,id));
   CREATE TABLE IF NOT EXISTS oidc (model TEXT NOT NULL,id TEXT NOT NULL,payload TEXT NOT NULL,expires INTEGER,uid TEXT,user_code TEXT,grant_id TEXT,PRIMARY KEY(model,id));
   CREATE INDEX IF NOT EXISTS oidc_uid ON oidc(model,uid); CREATE INDEX IF NOT EXISTS oidc_user_code ON oidc(model,user_code); CREATE INDEX IF NOT EXISTS oidc_grant ON oidc(grant_id);
   CREATE TABLE IF NOT EXISTS web_sessions (id TEXT PRIMARY KEY,expires INTEGER NOT NULL);`);

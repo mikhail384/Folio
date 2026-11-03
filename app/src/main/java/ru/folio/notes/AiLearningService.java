@@ -27,6 +27,7 @@ public final class AiLearningService extends Service {
     private SharedPreferences prefs;
     private NotebookStore store;
     private AiLearningQueue queue;
+    private AiCorpusStore corpus;
     private final SharedPreferences.OnSharedPreferenceChangeListener listener=(p,key)->{
         if(key==null)return;
         if(key.startsWith("ai_learning_doc_")||key.startsWith("trash_")||key.equals(ENABLED)||key.equals("agent_enabled")||key.equals("agent_cloud")){
@@ -56,7 +57,7 @@ public final class AiLearningService extends Service {
     static void saved(){AiLearningService current=instance;if(current!=null)synchronized(current.signal){current.generation++;current.signal.notifyAll();}}
 
     @Override public void onCreate(){
-        super.onCreate();prefs=getSharedPreferences("folio",MODE_PRIVATE);store=new NotebookStore(getApplicationContext());queue=new AiLearningQueue(new File(getFilesDir(),"ai-learning-queue.json"));
+        super.onCreate();prefs=getSharedPreferences("folio",MODE_PRIVATE);store=new NotebookStore(getApplicationContext());queue=new AiLearningQueue(new File(getFilesDir(),"ai-learning-queue.json"));corpus=new AiCorpusStore(new File(getFilesDir(),"ai-training-corpus"));
         NotificationManager manager=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);
         manager.createNotificationChannel(new NotificationChannel(CHANNEL,"Анализ почерка",NotificationManager.IMPORTANCE_LOW));
         instance=this;running=true;prefs.registerOnSharedPreferenceChangeListener(listener);
@@ -101,7 +102,7 @@ public final class AiLearningService extends Service {
             Ink.Doc doc=store.loadForLearning(id,prefs);if(doc==null)continue;
             if(!allowed(doc.id,pass))return;
             for(Ink.Page page:doc.pages){
-                if(!allowed(doc.id,pass))return;String fingerprint=AiLearningCore.pageFingerprint(page);if(queue.analyzed(doc.id,page.id,fingerprint))continue;
+                if(!allowed(doc.id,pass))return;String fingerprint="corpus-v1:"+AiLearningCore.pageFingerprint(page);if(queue.analyzed(doc.id,page.id,fingerprint))continue;
                 status("Анализируем разрешённые тетради · страниц: "+(++total));
                 JSONArray samples=new JSONArray();
                 if(!AiLearningCore.tiles(page).isEmpty()){
@@ -109,7 +110,7 @@ public final class AiLearningService extends Service {
                     samples=analyzer.analyze(doc,page,()->allowed(doc.id,pass));
                 }
                 if(!allowed(doc.id,pass))return;
-                cloud=config();boolean complete=queue.record(doc.id,page.id,fingerprint,samples,target(cloud));
+                cloud=config();corpus.saveOcr(doc.id,page.id,samples,target(cloud),()->allowed(doc.id,pass));if(!allowed(doc.id,pass))return;boolean complete=queue.record(doc.id,page.id,fingerprint,samples,target(cloud));
                 if(!complete){if(!flush(cloud,pass)){status("Очередь образцов заполнена · ожидаем связи");return;}if(!queue.record(doc.id,page.id,fingerprint,samples,target(cloud))){status("Очередь образцов заполнена · ожидаем связи или прежнего аккаунта");return;}}
             }
         }

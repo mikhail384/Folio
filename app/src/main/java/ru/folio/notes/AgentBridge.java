@@ -41,23 +41,39 @@ final class AgentBridge {
         if(!MessageDigest.isEqual(("Bearer "+token()).getBytes(StandardCharsets.UTF_8),headers.getOrDefault("authorization","").getBytes(StandardCharsets.UTF_8)))throw new Fault(401,"Invalid Folio pairing key");
         if(!headers.getOrDefault("content-type","").toLowerCase(Locale.ROOT).startsWith("application/json"))throw new Fault(415,"Use application/json");
         int length=Integer.parseInt(headers.getOrDefault("content-length","-1"));if(length<0||length>MAX_BODY)throw new Fault(413,"Request too large");byte[] bytes=new byte[length];int pos=0,n;while(pos<length&&(n=in.read(bytes,pos,length-pos))>0)pos+=n;if(pos!=length)throw new Fault(400,"Incomplete request");
-        JSONObject request=new JSONObject(new String(bytes,StandardCharsets.UTF_8));String route=first[1];FutureTask<JSONObject> task=new FutureTask<>(()->handle(route,request,generation));a.ui.post(task);
-        try{body=task.get(15,TimeUnit.SECONDS).toString();}catch(TimeoutException timeout){task.cancel(false);throw new Fault(503,"Canvas busy; read its state before retrying");}catch(ExecutionException fail){Throwable cause=fail.getCause();if(cause instanceof Fault)throw (Fault)cause;throw new Fault(400,cause.getMessage()==null?"Invalid request":cause.getMessage());}
+        JSONObject request=new JSONObject(new String(bytes,StandardCharsets.UTF_8));String route=first[1];body=dispatch(route,request,generation).toString();
         }catch(Fault fault){code=fault.code;body="{\"error\":"+JSONObject.quote(fault.getMessage())+",\"status\":"+code+"}";}catch(Exception error){code=400;body="{\"error\":\"Invalid request\"}";}
         byte[] data=body.getBytes(StandardCharsets.UTF_8);OutputStream out=socket.getOutputStream();out.write(("HTTP/1.1 "+code+" Result\r\nContent-Type: application/json; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: "+data.length+"\r\n\r\n").getBytes(StandardCharsets.US_ASCII));out.write(data);out.flush();
     }catch(IOException ignored){} }
     static final class Fault extends Exception{final int code;Fault(int code,String message){super(message);this.code=code;}}
+    <T>T onUi(Callable<T> action)throws Exception{
+        FutureTask<T> task=new FutureTask<>(action);a.ui.post(task);
+        try{return task.get(15,TimeUnit.SECONDS);}catch(TimeoutException timeout){task.cancel(false);throw new Fault(503,"Canvas busy; read its state before retrying");}
+        catch(ExecutionException fail){Throwable cause=fail.getCause();if(cause instanceof Exception)throw (Exception)cause;throw new Fault(400,"Invalid request");}
+    }
+    /** Called on a connection worker; snapshots are authorized on UI, then read off-thread. */
+    JSONObject dispatch(String route,JSONObject request,int generation)throws Exception{
+        if(route.equals("/v1/training_examples")){
+            Callable<JSONObject> read=onUi(()->{ready(generation);idle();return new AgentNotebook(a).trainingExamples(request,this,generation);});
+            return read.call();
+        }
+        return onUi(()->handle(route,request,generation));
+    }
+    void ready(int generation)throws Fault{
+        if(generation!=epoch||!enabled()||!a.resumed||a.isDestroyed())throw new Fault(409,"Folio connection is inactive");
+        if(a.current==null||a.canvas==null||a.intro!=null||a.launch!=null||a.setupOpen)throw new Fault(409,"Open a notebook in Folio");
+    }
+    void idle()throws Fault{NotesView v=a.canvas;if(v.penId!=-1||v.draft!=null||v.gestureBefore!=null||v.moving)throw new Fault(409,"Finish the current pen gesture first");}
     String revision(){return a.current.modified+":"+a.revision;}
     JSONObject state()throws Exception{
         NotesView v=a.canvas;Ink.Page p=v.page;JSONArray ops=new JSONArray();HashSet<String> seen=new HashSet<>();for(Ink.Stroke s:p.strokes)if(s.action.startsWith("ai:")&&seen.add(s.action))ops.put(s.action.split(":")[1]);
         return new JSONObject().put("protocol",1).put("document_id",a.current.id).put("page_id",p.id).put("title",a.current.title).put("revision",revision()).put("stroke_count",p.strokes.size()).put("active_layer",p.activeLayer).put("writable",p.writable()).put("viewport",new JSONArray(new double[]{v.px(0),v.py(0),v.px(v.getWidth()),v.py(v.getHeight())})).put("agent_operations",ops).put("selected_strokes",v.selection.size());
     }
     JSONObject handle(String route,JSONObject request,int generation)throws Exception {
-        if(generation!=epoch||!enabled()||!a.resumed||a.isDestroyed())throw new Fault(409,"Folio connection is inactive");
-        if(a.current==null||a.canvas==null||a.intro!=null||a.launch!=null||a.setupOpen)throw new Fault(409,"Open a notebook in Folio");
+        ready(generation);
         NotesView v=a.canvas;Ink.Page page=v.page;
         if(route.equals("/v1/state"))return state();
-        if(v.penId!=-1||v.draft!=null||v.gestureBefore!=null||v.moving)throw new Fault(409,"Finish the current pen gesture first");
+        idle();
         AgentNotebook notebooks=new AgentNotebook(a);
         if(route.equals("/v1/notebooks"))return notebooks.library();
         if(route.equals("/v1/notebook_pages"))return notebooks.pages(request);

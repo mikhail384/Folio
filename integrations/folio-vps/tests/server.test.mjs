@@ -52,7 +52,7 @@ test('private server: setup, OAuth PKCE, encrypted tablet queue and portable pro
    assert.equal(tokenRes.status,200,await tokenRes.clone().text());const token=await tokenRes.json();assert(token.access_token);assert(token.refresh_token,'Token fields: '+JSON.stringify({scope:token.scope,keys:Object.keys(token)}));
    const refreshed=await request(new URL(metadata.token_endpoint).pathname,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'refresh_token',client_id:client.client_id,refresh_token:token.refresh_token,resource:origin+'/mcp'})});assert.equal(refreshed.status,200,await refreshed.clone().text());
    const headers={authorization:'Bearer '+token.access_token,'content-type':'application/json'};
-   let list=await request('/mcp',{method:'POST',headers,body:JSON.stringify({jsonrpc:'2.0',id:2,method:'tools/list'})});assert.equal(list.status,200);assert.equal((await list.json()).result.tools.length,11);
+   let list=await request('/mcp',{method:'POST',headers,body:JSON.stringify({jsonrpc:'2.0',id:2,method:'tools/list'})});assert.equal(list.status,200);assert.equal((await list.json()).result.tools.length,12);
    const deviceHeaders={'oai-sites-authorization':'Bearer '+c.service_token,authorization:'Bearer '+await roleToken(c.token,'device',c.room),'content-type':'application/json'};
    const trainingId='b'.repeat(32),training={text:'H₂O',strokes:[{points:[10,20,.02,0,0,30,40,.8,0,0]}]};
    const trainingResponse=await request('/relay/v1/training',{method:'POST',headers:deviceHeaders,body:JSON.stringify({room:c.room,id:trainingId,envelope:await seal(c.token,training,'folio:training:'+trainingId)})});
@@ -60,6 +60,17 @@ test('private server: setup, OAuth PKCE, encrypted tablet queue and portable pro
    const trained=await (await request('/api/profiles?name=my-handwriting')).json();assert(trained.profile.samples['H₂O']);
    const immediate=await request('/relay/v1/poll',{method:'POST',headers:deviceHeaders,body:JSON.stringify({room:c.room,wait:false})});assert.equal((await immediate.json()).idle,true);
    const poll=()=>request('/relay/v1/poll',{method:'POST',headers:deviceHeaders,body:JSON.stringify({room:c.room})});
+   const collectPoll=poll();await new Promise(r=>setTimeout(r,100));
+   const collect=request('/mcp',{method:'POST',headers,body:JSON.stringify({jsonrpc:'2.0',id:9,method:'tools/call',params:{name:'folio_collect_training_examples',arguments:{document_id:'calibration'}}})});
+   const collectTask=await (await collectPoll).json();assert.equal((await open(c.token,collectTask.envelope,'folio:'+collectTask.id+':request')).route,'training_examples');
+   const sample={document_id:'calibration',page_id:'calibration',text:'Привет',source:'calibration',reviewed:true,kind:'text',strokes:[{points:[0,0,.4,0,0,10,20,.6,0,0]}]};
+   const result={document_id:'calibration',examples:[sample,{...sample,text:'guess',source:'ocr',reviewed:false}],has_more:false,next_cursor:''};
+   assert.equal((await request('/relay/v1/reply',{method:'POST',headers:deviceHeaders,body:JSON.stringify({room:c.room,id:collectTask.id,lease:collectTask.lease,envelope:await seal(c.token,{ok:true,result},'folio:'+collectTask.id+':response')})})).status,200);
+   const collected=await (await collect).json();assert.match(collected.result.content[0].text,/new_training_examples/);
+   const corpus=await (await request('/api/training-corpus?name=my-handwriting')).json();assert.equal(corpus.examples.length,1);assert.equal(corpus.examples[0].text,'Привет');
+   const imported=await post('/api/training-corpus',{name:'mine',document_id:'calibration',examples:corpus.examples});assert.equal(imported.status,200);assert.equal((await imported.json()).added,1);
+   const duplicate=await post('/api/training-corpus',{name:'mine',document_id:'calibration',examples:corpus.examples});assert.equal((await duplicate.json()).added,0);
+   const invalid=await post('/api/training-corpus',{name:'mine',document_id:'other',examples:corpus.examples});assert.equal(invalid.status,400);
    const pending=poll();await new Promise(r=>setTimeout(r,100));
    const called=request('/mcp',{method:'POST',headers,body:JSON.stringify({jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'folio_status',arguments:{}}})});
    const task=await (await pending).json();assert(task.id);assert.equal((await open(c.token,task.envelope,'folio:'+task.id+':request')).route,'state');

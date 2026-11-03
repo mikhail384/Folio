@@ -13,7 +13,7 @@ function request(port,method,path,headers={},body=Buffer.alloc(0),timeout=45000,
   });call.on('timeout',()=>call.destroy(new Error('Upstream timeout')));call.on('error',reject);call.end(body);
 });}
 function durable(path,contents){const temp=path+'.'+randomUUID()+'.tmp';const fd=openSync(temp,'wx',0o600);try{writeFileSync(fd,contents);fsyncSync(fd);}finally{closeSync(fd);}renameSync(temp,path);if(process.platform!=='win32'){const dir=openSync(join(path,'..'),'r');try{fsyncSync(dir);}finally{closeSync(dir);}}}
-const readonly=path=>['/','/login','/setup','/app.js','/style.css','/favicon.svg','/profile-archive.mjs','/health','/api/session','/api/profiles'].includes(path)||path.startsWith('/.well-known/');
+const readonly=path=>['/','/login','/setup','/app.js','/style.css','/favicon.svg','/profile-archive.mjs','/training-archive.mjs','/health','/api/session','/api/profiles','/api/training-corpus'].includes(path)||path.startsWith('/.well-known/');
 function needsCheckpoint(method,path,response){
   if(method==='GET'&&readonly(path))return false;
   // An idle poll only refreshes the tablet's ephemeral last-seen timestamp.
