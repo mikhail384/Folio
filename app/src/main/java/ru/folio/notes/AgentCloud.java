@@ -3,14 +3,14 @@ import org.json.*;import java.net.*;import java.io.*;import java.nio.charset.Sta
 
 /** Outbound HTTPS only; uses Android's normal VPN/proxy routing, never a physical-network binding. */
 final class AgentCloud {
-    static final String ORIGIN="https://folio-canvas-link.mikhailllm.chatgpt.site";
-    static final String VPS_ORIGIN="https://31-77-128-190.cdn-one.org:17443";
+    static final String ORIGIN=AgentEndpoints.SITE;
+    static final String VPS_ORIGIN=AgentEndpoints.PREVIOUS_VPS;
     final AgentBridge bridge;volatile boolean running;volatile HttpURLConnection connection;volatile String status="Облако не подключено",trainingStatus="Образцы сохраняются на устройстве";Thread thread;
     AgentCloud(AgentBridge bridge){this.bridge=bridge;}
     boolean configured(){return !bridge.a.prefs.getString("agent_cloud","").isEmpty();}
     JSONObject profile()throws Exception{return new JSONObject(bridge.a.prefs.getString("agent_cloud","{}"));}
     static JSONObject validate(String raw)throws Exception{
-        if(raw.length()>8192)throw new IllegalArgumentException("Invalid profile");JSONObject p=new JSONObject(raw);String url=p.optString("url");if(!"relay".equals(p.optString("transport"))||!(ORIGIN.equals(url)||VPS_ORIGIN.equals(url))||!p.optString("room").matches("[a-f0-9]{32}")||!p.optString("token").matches("[A-Za-z0-9_-]{43}")||AgentCrypto.decode(p.getString("token")).length!=32)throw new IllegalArgumentException("Invalid profile");String service=p.getString("service_token");if(service.length()<16||service.length()>2048||service.indexOf('\r')>=0||service.indexOf('\n')>=0)throw new IllegalArgumentException("Invalid profile");return p;
+        if(raw.length()>8192)throw new IllegalArgumentException("Invalid profile");JSONObject p=new JSONObject(raw);String url=p.optString("url");if(!"relay".equals(p.optString("transport"))||!AgentEndpoints.allowed(url)||!p.optString("room").matches("[a-f0-9]{32}")||!p.optString("token").matches("[A-Za-z0-9_-]{43}")||AgentCrypto.decode(p.getString("token")).length!=32)throw new IllegalArgumentException("Invalid profile");String service=p.getString("service_token");if(service.length()<16||service.length()>2048||service.indexOf('\r')>=0||service.indexOf('\n')>=0)throw new IllegalArgumentException("Invalid profile");return p;
     }
     void start(int generation){if(running)return;running=true;status="Подключаем облако · VPN можно оставить включённым";thread=new Thread(()->loop(generation),"folio-agent-cloud");thread.setDaemon(true);thread.start();}
     boolean active(int generation){return running&&bridge.epoch==generation&&bridge.a.resumed&&bridge.enabled();}

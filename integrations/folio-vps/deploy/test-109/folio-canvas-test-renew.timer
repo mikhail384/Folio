@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Folio test IP certificate renewal
+
+[Timer]
+OnCalendar=*-*-* 03,15:21:00
+RandomizedDelaySec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

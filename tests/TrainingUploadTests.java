@@ -12,6 +12,9 @@ public final class TrainingUploadTests {
     static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);}
     public static void main(String[] args)throws Exception{
         String token=Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32]),room="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",service="test-service-token";
+        JSONObject preview=new JSONObject().put("transport","relay").put("url",AgentEndpoints.TEST_VPS).put("room",room).put("token",token).put("service_token",service);
+        check(AgentCloud.validate(preview.toString()).getString("url").equals(AgentEndpoints.TEST_VPS),"new HTTPS VPS can be paired");
+        preview.put("url","https://109.66.236.217:17444");try{AgentCloud.validate(preview.toString());throw new AssertionError("unexpected origin accepted");}catch(IllegalArgumentException expected){}
         Path dir=Files.createTempDirectory("folio-upload-test");File file=dir.resolve("training.json").toFile();
         MainActivity a=new MainActivity();a.handwritingTraining=new HandwritingTraining(file);AgentBridge bridge=new AgentBridge(a);bridge.epoch=7;bridge.cloud.running=true;
         HttpServer server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);AtomicInteger attempts=new AtomicInteger();

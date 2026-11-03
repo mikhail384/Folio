@@ -1,0 +1,11 @@
+[Unit]
+Description=Renew Folio test IP certificate
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PYTHONPATH=/opt/folio-canvas-test/python
+ExecStart=/opt/folio-canvas-test/python/bin/certbot renew --quiet --config-dir /opt/folio-canvas-test/acme --work-dir /opt/folio-canvas-test/acme-work --logs-dir /opt/folio-canvas-test/acme-log --deploy-hook /opt/folio-canvas-test/deploy/install-cert.sh
+NoNewPrivileges=true
+PrivateTmp=true

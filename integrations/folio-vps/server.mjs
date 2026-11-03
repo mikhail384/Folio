@@ -41,8 +41,8 @@ export function createApplication({origin,dataDir,setupToken,allowTestRedirect=f
   function createSession(res){const raw=encode(randomBytes(32));db.prepare('DELETE FROM web_sessions WHERE expires<?').run(Date.now());db.prepare('INSERT INTO web_sessions(id,expires) VALUES(?,?)').run(digest(raw),Date.now()+8*3600000);res.setHeader('Set-Cookie',`folio_sid=${raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800${originUrl.protocol==='https:'?'; Secure':''}`);}
   function requireWeb(req){if(!webSession(req))throw new ApiError(401,'Войдите в Folio Cloud');}
   function requirePostOrigin(req){if(!allowedOrigin(req)||!String(req.headers['content-type']||'').toLowerCase().startsWith('application/json'))throw new ApiError(403,'Недопустимый источник запроса');}
-  const staticFiles={'/':'index.html','/login':'login.html','/setup':'setup.html','/app.js':'app.js','/style.css':'style.css'};
-  const sendStatic=(res,name)=>{const path=join(here,'public',name),mime=name.endsWith('.js')?'text/javascript; charset=utf-8':name.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8';send(res,200,readFileSync(path,'utf8'),mime,{'Content-Security-Policy':"default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"});};
+  const staticFiles={'/':'index.html','/login':'login.html','/setup':'setup.html','/app.js':'app.js','/style.css':'style.css','/favicon.svg':'favicon.svg'};
+  const sendStatic=(res,name)=>{const path=join(here,'public',name),mime=name.endsWith('.svg')?'image/svg+xml':name.endsWith('.js')?'text/javascript; charset=utf-8':name.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8';send(res,200,readFileSync(path,'utf8'),mime,{'Content-Security-Policy':"default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"});};
   async function handle(req,res){try{
     const url=new URL(req.url,origin),path=url.pathname;
     if(path.startsWith('/interaction/')){await oidc.interaction(req,res);return;}

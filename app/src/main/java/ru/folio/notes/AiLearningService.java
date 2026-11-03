@@ -82,7 +82,7 @@ public final class AiLearningService extends Service {
     private String target(JSONObject config)throws Exception{return config==null?"":config.getString("url")+"|"+config.getString("room");}
     private boolean flush(JSONObject config,long pass)throws Exception{
         if(config==null)return true;
-        if(!AiTrainingUpload.supportsAutomaticProfile(config,AgentCloud.ORIGIN)){status("Серверу нужно обновление · образцы сохранены на планшете");return false;}
+        if(!AgentEndpoints.automatic(config.optString("url"))){status("Серверу нужно обновление · образцы сохранены на планшете");return false;}
         String destination=target(config);JSONArray pending=queue.pendingFor(destination);
         for(int i=0;i<pending.length();i++){
             JSONObject item=pending.getJSONObject(i);String doc=item.getString("document_id");if(!allowed(doc,pass))continue;

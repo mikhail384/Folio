@@ -1,0 +1,25 @@
+[Unit]
+Description=Folio Canvas test backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=folio-test
+Group=folio-test
+WorkingDirectory=/opt/folio-canvas-test/app/integrations/folio-vps
+Environment=NODE_ENV=production
+Environment=FOLIO_ORIGIN=https://109.66.236.217:17443
+Environment=FOLIO_DATA_DIR=/var/lib/folio-canvas-test
+Environment=FOLIO_PORT=18080
+ExecStart=/opt/folio-canvas-test/bin/node /opt/folio-canvas-test/app/integrations/folio-vps/server.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/folio-canvas-test
+
+[Install]
+WantedBy=multi-user.target

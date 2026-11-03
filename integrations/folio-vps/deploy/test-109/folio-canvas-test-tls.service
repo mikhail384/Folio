@@ -1,0 +1,20 @@
+[Unit]
+Description=Folio Canvas test HTTPS listener
+After=network-online.target folio-canvas-test.service
+Wants=network-online.target
+Requires=folio-canvas-test.service
+
+[Service]
+Type=simple
+User=folio-test
+Group=folio-test
+ExecStart=/opt/folio-canvas-test/bin/node /opt/folio-canvas-test/deploy/tls-proxy.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
