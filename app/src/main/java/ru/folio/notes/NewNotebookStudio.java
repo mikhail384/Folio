@@ -11,7 +11,7 @@ final class NewNotebookStudio {
         TextView label=a.text("НАЗВАНИЕ",10,Studio.ACCENT,true);label.setLetterSpacing(.12f);box.addView(label);
         EditText name=Studio.input(a,"","Пустое поле — дата");name.setSingleLine(true);
         LinearLayout.LayoutParams nameParams=new LinearLayout.LayoutParams(-1,a.dp(54));nameParams.topMargin=a.dp(10);box.addView(name,nameParams);
-        LinearLayout row=Studio.row(a,"pen","Обучение почерку","Анализ на планшете. При включённом облачном доступе распознанные образцы отправятся в профиль. Разрешение можно отозвать.",null);
+        LinearLayout row=Studio.row(a,"pen","Обучение почерку","Поиск образцов на планшете: рукописный текст может распознаваться с ошибками. При включённом облачном доступе образцы отправятся в профиль. Разрешение можно отозвать.",null);
         final boolean[] allowed={false};Studio.Toggle toggle=new Studio.Toggle(a,false,on->allowed[0]=on);toggle.setContentDescription("Разрешить обучение почерку для этой тетради");
         row.addView(toggle,new LinearLayout.LayoutParams(a.dp(50),a.dp(48)));row.setOnClickListener(v->toggle.performClick());
         LinearLayout.LayoutParams option=new LinearLayout.LayoutParams(-1,-2);option.topMargin=a.dp(18);box.addView(row,option);

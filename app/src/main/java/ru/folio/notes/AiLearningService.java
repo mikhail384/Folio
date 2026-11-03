@@ -125,7 +125,7 @@ public final class AiLearningService extends Service {
                 if(!active())break;if(!wake.isHeld())wake.acquire(10*60*1000L);
                 try{scan(pass);}catch(InterruptedException interrupted){if(!active())break;}catch(Exception|LinkageError|OutOfMemoryError failure){android.util.Log.e("Folio","Handwriting analysis failed",failure);status("Не удалось продолжить анализ · откройте Folio снова");}
                 if(wake.isHeld())wake.release();
-                synchronized(signal){if(!active())break;signal.wait(3500);if(pass==generation){stopSelfResult(latestStart);break;}}
+                synchronized(signal){if(!active())break;signal.wait(3500);if(pass==generation){worker=null;stopSelfResult(latestStart);break;}}
             }
         }catch(InterruptedException ignored){Thread.currentThread().interrupt();}
         finally{if(wake!=null&&wake.isHeld())wake.release();AiOcrAnalyzer a=analyzer;analyzer=null;if(a!=null)a.close();upload.stop();store.io.shutdown();}
