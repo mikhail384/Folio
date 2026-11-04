@@ -28,7 +28,29 @@ def split_key(text):
     return value
 
 
-def prepare(examples, destination, charset, height=64, width=288):
+def default_split(key):
+    """Assign a word independently of corpus size, so later additions cannot leak it."""
+    digest=hashlib.sha256(('folio-split-v2:'+key).encode('utf8')).digest()
+    return 'val' if digest[0]<51 else 'train'
+
+
+def previous_splits(dataset):
+    """Preserve an existing dataset's word assignments when its corpus grows."""
+    assigned={}
+    for split in ('train','val'):
+        rows=json.loads((Path(dataset)/(split+'.json')).read_text(encoding='utf8'))
+        if not isinstance(rows,list):raise ValueError('Invalid previous split')
+        for row in rows:
+            if not isinstance(row,dict) or not isinstance(row.get('text'),str):
+                raise ValueError('Invalid previous split')
+            key=split_key(row['text'])
+            if not key or key in assigned and assigned[key]!=split:
+                raise ValueError('Previous training and validation words overlap')
+            assigned[key]=split
+    return assigned
+
+
+def prepare(examples, destination, charset, height=64, width=288, assignments=None):
     destination = Path(destination)
     if destination.exists() and any(destination.iterdir()):
         raise ValueError('Refusing to overwrite an existing dataset')
@@ -41,8 +63,10 @@ def prepare(examples, destination, charset, height=64, width=288):
     keys=sorted({split_key(label) for label in labels if split_key(label)})
     if len(keys) < 12:
         raise ValueError('At least 12 distinct reviewed words are required')
-    keys.sort(key=lambda s: hashlib.sha256(('folio-split-v1:' + s).encode('utf8')).digest())
-    held = set(keys[:max(3, len(keys)//5)])
+    assignments={} if assignments is None else assignments
+    if not isinstance(assignments,dict) or any(not isinstance(k,str) or v not in ('train','val') for k,v in assignments.items()):
+        raise ValueError('Invalid previous assignments')
+    assigned={key:assignments.get(key,default_split(key)) for key in keys}
     images = destination / 'img'
     images.mkdir(parents=True, exist_ok=True)
     splits = {'train': [], 'val': []}
@@ -76,7 +100,7 @@ def prepare(examples, destination, charset, height=64, width=288):
                 draw.ellipse((x-r,y-r,x+r,y+r),fill=0)
         identity=hashlib.sha256(json.dumps(item,sort_keys=True,ensure_ascii=False,separators=(',',':')).encode('utf8')).hexdigest()
         image.resize((image_width,image_height),Image.Resampling.LANCZOS).save(images/(identity+'.png'))
-        splits['val' if split_key(text) in held else 'train'].append({'img':identity+'.png','text':text})
+        splits[assigned[split_key(text)]].append({'img':identity+'.png','text':text})
     if len(splits['train']) < 8 or len(splits['val']) < 3:
         raise ValueError('Insufficient valid reviewed trajectories after split')
     for name, rows in splits.items():
@@ -91,9 +115,11 @@ def main():
     parser.add_argument('corpus');parser.add_argument('destination');parser.add_argument('charset')
     parser.add_argument('--profile',default='my-handwriting')
     parser.add_argument('--height',type=int,default=64);parser.add_argument('--width',type=int,default=288)
+    parser.add_argument('--split-from',help='Preserve the train and validation assignments of this earlier dataset')
     args=parser.parse_args()
     charset=json.loads(Path(args.charset).read_text(encoding='utf8'))
-    counts=prepare(Corpus(args.corpus,args.profile).examples(),args.destination,charset,height=args.height,width=args.width)
+    prior=previous_splits(args.split_from) if args.split_from else None
+    counts=prepare(Corpus(args.corpus,args.profile).examples(),args.destination,charset,height=args.height,width=args.width,assignments=prior)
     print('Private reviewed word crops:', counts)
 
 

@@ -15,7 +15,10 @@ rejected, and automatic transcription must be checked before training. Its
 pressure is masked in `word_data.py` because some examples are marker strokes.
 
 `diffusion_data.py` creates word crops from the reviewed corpus, holding out
-whole words together with their capitalization and punctuation variants. The
+whole words together with their capitalization and punctuation variants. Stable
+hash assignments keep these words held out as the corpus grows; for datasets
+created before this rule, pass `--split-from` with the previous dataset folder
+to preserve its original training and validation groups. The
 experimental `diffusion_train.py` and `evaluate_diffusion.py` use the separately
 installed [handwriting-diffusion](https://github.com/Levos06/handwriting-diffusion)
 reference implementation and generic weights, under its MIT license. The

@@ -44,5 +44,18 @@ class PrivateWordDataTests(unittest.TestCase):
             with Image.open(next((path/'img').glob('*.png'))) as image:
                 self.assertLessEqual(image.width,432);self.assertLessEqual(image.height,96)
 
+    def test_growing_corpus_does_not_move_previous_word_groups(self):
+        first=[self.example('слово'+str(i),offset=i*20) for i in range(20)]
+        more=first+[self.example('слово'+str(i),offset=i*20) for i in range(20,40)]
+        charset=list('слово0123456789')
+        with tempfile.TemporaryDirectory() as temp:
+            old=Path(temp)/'old';new=Path(temp)/'new'
+            module.prepare(first,old,charset);module.prepare(more,new,charset)
+            original=module.previous_splits(old);expanded=module.previous_splits(new)
+            self.assertEqual({k:expanded[k] for k in original},original)
+            previous=dict(original);previous['слово0']='val' if original['слово0']=='train' else 'train'
+            preserved=Path(temp)/'preserved';module.prepare(more,preserved,charset,assignments=previous)
+            self.assertEqual(module.previous_splits(preserved)['слово0'],previous['слово0'])
+
 
 if __name__=='__main__':unittest.main()
