@@ -66,7 +66,7 @@ public final class NotebookStore {
     }
     public void exportArchive(Ink.Doc doc,OutputStream output)throws Exception{
         try(ZipOutputStream zip=new ZipOutputStream(output)){
-            zip.putNextEntry(new ZipEntry("document.json"));zip.write(doc.json().toString().getBytes(StandardCharsets.UTF_8));zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("document.json"));OutputStreamWriter writer=new OutputStreamWriter(zip,StandardCharsets.UTF_8);writer.write(doc.json().toString());writer.flush();zip.closeEntry();
             HashSet<String> names=new HashSet<>();for(Ink.Page p:doc.pages)if(!p.background.isEmpty())names.add(p.background);
             for(Ink.Audio audio:doc.audio)names.add(audio.file);for(String name:names){zip.putNextEntry(new ZipEntry("assets/"+name));try(InputStream in=new FileInputStream(asset(name))){byte[] b=new byte[32768];int n;while((n=in.read(b))!=-1)zip.write(b,0,n);}zip.closeEntry();}
         }
