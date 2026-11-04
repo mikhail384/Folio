@@ -36,6 +36,9 @@ Neither a successful run nor a low denoising loss establishes correct spelling;
 generated words still need independent text and visual validation. The current
 reference vocabulary also lacks some Cyrillic capitals and mathematical symbols.
 Do not use these experiments to claim complete uppercase or formula support.
+New research checkpoints record a hash of their conditioning font so inference
+can reject an accidental mismatch. Pass `--content-font` when using a font other
+than the default; older checkpoints do not contain this metadata.
 
 Example on Windows, after installing the reference and PyTorch CUDA into a
 private environment:

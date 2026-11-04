@@ -6,6 +6,7 @@ ship the weights until an editable-stroke conversion also passes review.
 """
 import argparse
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -27,6 +28,9 @@ def main():
     if output.exists() and any(output.iterdir()):raise ValueError('Refusing to overwrite an existing model directory')
     os.environ['PROJ']=str(dataset.parent.parent);os.environ['HW_DS']=dataset.name
     os.environ['HW_FONT']=os.environ.get('HW_FONT',r'C:\Windows\Fonts\arial.ttf')
+    font_path=Path(os.environ['HW_FONT']).resolve()
+    if not font_path.is_file():raise ValueError('The content conditioning font does not exist')
+    font_sha256=hashlib.sha256(font_path.read_bytes()).hexdigest()
     sys.path.insert(0,str(reference/'src'))
     import torch
     from torch.nn import functional as F
@@ -82,7 +86,8 @@ def main():
         return sum(value*n for value,n in values)/sum(n for _,n in values)
     def save(step,metric):
         state={'e':{k:v.detach().cpu().half() for k,v in ema.state_dict().items()},'step':step,'chars':ref.chars,
-               'research_only':True,'validation_noise_mse':metric,'training_examples':len(tg),'held_out_examples':len(vt),'image_scale':args.image_scale}
+               'research_only':True,'validation_noise_mse':metric,'training_examples':len(tg),'held_out_examples':len(vt),
+               'image_scale':args.image_scale,'condition_font_sha256':font_sha256}
         torch.save(state,output/('step-%05d.pt'%step))
         print('step',step,'held_out_noise_mse',round(metric,5),'elapsed_seconds',round(time.time()-started),flush=True)
 

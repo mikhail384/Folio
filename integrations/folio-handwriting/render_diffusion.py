@@ -1,5 +1,6 @@
 """Generate private research word images, with no access to source trajectories."""
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -7,15 +8,25 @@ from pathlib import Path
 import sys
 
 
+def validate_condition_font(checkpoint,font):
+    """Never silently render with a different font from the training input."""
+    path=Path(font)
+    if not path.is_file():raise ValueError('The content conditioning font does not exist')
+    expected=checkpoint.get('condition_font_sha256')
+    if expected is not None and (not isinstance(expected,str) or hashlib.sha256(path.read_bytes()).hexdigest()!=expected):
+        raise ValueError('The content conditioning font does not match this checkpoint')
+
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('checkpoint');parser.add_argument('output');parser.add_argument('words',nargs='+')
     parser.add_argument('--reference',default='research/handwriting-diffusion-reference');parser.add_argument('--seed',type=int,default=7401)
+    parser.add_argument('--content-font',help='Font used to condition this research checkpoint')
     parser.add_argument('--sampler',choices=('reference','ddim'),default='reference')
     parser.add_argument('--steps',type=int,default=50);parser.add_argument('--eta',type=float,default=1.0)
     parser.add_argument('--guidance',type=float,default=2.0);parser.add_argument('--spacing',type=float,default=22.0)
     args=parser.parse_args();reference=Path(args.reference).resolve();output=Path(args.output).resolve()
     if output.exists() and any(output.iterdir()):raise ValueError('Refusing to overwrite an existing output directory')
-    os.environ['PROJ']=str(output.parent/'diffusion-render-work');os.environ['HW_FONT']=os.environ.get('HW_FONT',r'C:\Windows\Fonts\arial.ttf')
+    os.environ['PROJ']=str(output.parent/'diffusion-render-work');os.environ['HW_FONT']=args.content_font or os.environ.get('HW_FONT',r'C:\Windows\Fonts\arial.ttf')
     sys.path.insert(0,str(reference/'src'))
     import torch
     from PIL import Image, ImageFont
@@ -27,6 +38,7 @@ def main():
     torch.set_num_threads(4);torch.manual_seed(args.seed);torch.backends.cuda.matmul.allow_tf32=True
     saved=torch.load(args.checkpoint,map_location='cpu',weights_only=True)
     if saved.get('chars')!=ref.chars:raise ValueError('Mismatched model vocabulary')
+    validate_condition_font(saved,os.environ['HW_FONT'])
     scale=saved.get('image_scale',1.0)
     if scale not in (1.0,1.5,2.0):raise ValueError('Unsupported checkpoint image scale')
     ref.H=round(64*scale);ref.PPC=args.spacing*scale
