@@ -17,7 +17,7 @@ class PrivateWordDataTests(unittest.TestCase):
 
     def test_variants_share_split_and_formulas_are_not_words(self):
         examples=[self.example('слово'+str(i),offset=i*20) for i in range(20)]
-        examples += [self.example('Слово0.',offset=440),self.example('H2O','formula',500)]
+        examples += [self.example('Слово0.',offset=440),self.example('H2O','formula',500),self.example('..',offset=550)]
         charset=list('словС0123456789.HO')
         with tempfile.TemporaryDirectory() as temp:
             destination=Path(temp)/'dataset';counts=module.prepare(examples,destination,charset)

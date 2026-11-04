@@ -49,5 +49,14 @@ class GeneratedVectorTests(unittest.TestCase):
                 if index in (0,len(path)-1) or len(graph[point])!=2:
                     self.assertEqual(tuple(smoothed[index]),point)
 
+    def test_raster_width_noise_does_not_cause_pressure_jumps(self):
+        # Alternating raster widths are common at diagonal edges and crossings.
+        # They must not turn into sudden large nib changes along a traced stroke.
+        raw=[.1,1.5]*20
+        result=module._smooth_pressure(raw,3)
+        self.assertGreaterEqual(float(result.min()),.75)
+        self.assertLessEqual(float(result.max()),1.1)
+        self.assertLessEqual(float(np.max(np.abs(np.diff(result)))),.04/3+1e-9)
+
 
 if __name__=='__main__':unittest.main()

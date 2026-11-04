@@ -59,6 +59,7 @@ def prepare(examples, destination, charset, height=64, width=288, assignments=No
     size_factor=height/64.0
     labels = sorted({unicodedata.normalize('NFC', e['text']) for e in examples
                      if e['kind'] == 'text' and 2 <= len(e['text']) <= 16
+                     and split_key(e['text'])
                      and all(c in charset for c in e['text'])})
     keys=sorted({split_key(label) for label in labels if split_key(label)})
     if len(keys) < 12:

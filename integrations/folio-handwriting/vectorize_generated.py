@@ -68,6 +68,20 @@ def _smooth(path,graph,sigma=.8):
     return result
 
 
+def _smooth_pressure(raw,upscale):
+    """Limit raster-width noise; these values are not measured pen pressure."""
+    values=np.asarray(raw,dtype=np.float64)
+    if len(values)>1:
+        values=ndimage.gaussian_filter1d(values,sigma=1.5*upscale,mode='nearest')
+    values=np.clip(values,.75,1.1)
+    # A one-pixel change in the distance transform is not a real abrupt
+    # pressure change. Bound the variation between successive subpixel samples.
+    maximum_step=.04/upscale
+    for i in range(1,len(values)):
+        values[i]=min(values[i-1]+maximum_step,max(values[i-1]-maximum_step,values[i]))
+    return values
+
+
 def vectorize(image,x=0,y=0,height=40,color='#28344b',threshold=170,upscale=3):
     if not isinstance(image,Image.Image) or not isinstance(upscale,int) or not 1<=upscale<=4 or image.width*image.height*upscale*upscale>2_000_000:
         raise ValueError('Invalid generated image')
@@ -103,12 +117,14 @@ def vectorize(image,x=0,y=0,height=40,color='#28344b',threshold=170,upscale=3):
     for path in paths:
         points=[]
         smoothed=_smooth(path,graph,sigma=.8*upscale)
-        for (yy,xx),(smooth_y,smooth_x) in zip(path,smoothed):
+        pressures=[]
+        for yy,xx in path:
             diameter=max(.3,min(80.0,max(1.0,2*float(distance[yy,xx])-1)*scale))
             ratio=diameter/estimated
-            pressure=max(.021,min(1.5,((max(.2,ratio)-.2)/.8)**2))
-            points.append([round(float(x)+(smooth_x-left+.5)*scale,4),round(float(y)+(smooth_y-top+.5)*scale,4),round(pressure,5),0.0])
+            pressures.append(max(.021,min(1.5,((max(.2,ratio)-.2)/.8)**2)))
+        for (smooth_y,smooth_x),pressure in zip(smoothed,_smooth_pressure(pressures,upscale)):
+            points.append([round(float(x)+(smooth_x-left+.5)*scale,4),round(float(y)+(smooth_y-top+.5)*scale,4),round(float(pressure),5),0.0])
         total+=len(points)
         if total>100000:raise ValueError('Generated image contains too many points')
         strokes.append({'tool':'fountain','color':color,'width':round(width,4),'points':points})
-    return {'strokes':strokes,'advance':(right-left+1)*scale,'height':float(height),'estimated_pressure':True}
+    return {'strokes':strokes,'advance':(right-left+1)*scale,'height':float(height),'estimated_pressure':True,'pressure_smoothed':True}
