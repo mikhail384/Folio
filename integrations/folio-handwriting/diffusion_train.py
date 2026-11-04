@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--reference',default='research/handwriting-diffusion-reference')
     parser.add_argument('--steps',type=int,default=1000);parser.add_argument('--batch',type=int,default=8)
     parser.add_argument('--every',type=int,default=250);parser.add_argument('--learning-rate',type=float,default=0.00001)
+    parser.add_argument('--image-scale',type=float,default=1.0,choices=(1.0,1.5,2.0))
     args=parser.parse_args()
     dataset=Path(args.dataset).resolve();reference=Path(args.reference).resolve();output=Path(args.output).resolve()
     if dataset.parent.name!='data' or not 100<=args.steps<=100000 or not 1<=args.batch<=32 or args.every<1:
@@ -29,8 +30,16 @@ def main():
     sys.path.insert(0,str(reference/'src'))
     import torch
     from torch.nn import functional as F
+    from PIL import ImageFont
     import train as ref
 
+    ref.H=round(64*args.image_scale);ref.W=round(288*args.image_scale);ref.PPC=19*args.image_scale
+    ref._f=ImageFont.truetype(os.environ['HW_FONT'],round(40*args.image_scale))
+    geometry=dataset/'geometry.json'
+    if geometry.exists() and json.loads(geometry.read_text(encoding='utf8'))!={'height':ref.H,'width':ref.W}:
+        raise ValueError('Dataset dimensions do not match the model image scale')
+    if not geometry.exists() and args.image_scale!=1:
+        raise ValueError('Scaled datasets require explicit image geometry')
     if ref.dev!='cuda':raise RuntimeError('A CUDA GPU is required for this research training')
     torch.set_num_threads(4);torch.manual_seed(20261103)
     torch.backends.cuda.matmul.allow_tf32=True
@@ -73,7 +82,7 @@ def main():
         return sum(value*n for value,n in values)/sum(n for _,n in values)
     def save(step,metric):
         state={'e':{k:v.detach().cpu().half() for k,v in ema.state_dict().items()},'step':step,'chars':ref.chars,
-               'research_only':True,'validation_noise_mse':metric,'training_examples':len(tg),'held_out_examples':len(vt)}
+               'research_only':True,'validation_noise_mse':metric,'training_examples':len(tg),'held_out_examples':len(vt),'image_scale':args.image_scale}
         torch.save(state,output/('step-%05d.pt'%step))
         print('step',step,'held_out_noise_mse',round(metric,5),'elapsed_seconds',round(time.time()-started),flush=True)
 

@@ -28,10 +28,13 @@ def split_key(text):
     return value
 
 
-def prepare(examples, destination, charset):
+def prepare(examples, destination, charset, height=64, width=288):
     destination = Path(destination)
     if destination.exists() and any(destination.iterdir()):
         raise ValueError('Refusing to overwrite an existing dataset')
+    if height<32 or height>128 or width<128 or width>576 or height%8 or width%8:
+        raise ValueError('Invalid word image dimensions')
+    size_factor=height/64.0
     labels = sorted({unicodedata.normalize('NFC', e['text']) for e in examples
                      if e['kind'] == 'text' and 2 <= len(e['text']) <= 16
                      and all(c in charset for c in e['text'])})
@@ -56,28 +59,30 @@ def prepare(examples, destination, charset):
         lo_y=min(p[1] for p in points);hi_y=max(p[1] for p in points)
         if hi_y-lo_y < .001 or hi_x-lo_x < .001:
             continue
-        scale=min(42.0/(hi_y-lo_y), 274.0/(hi_x-lo_x))
-        width=math.ceil((hi_x-lo_x)*scale)+8;height=math.ceil((hi_y-lo_y)*scale)+8
-        if width < 8 or height < 8 or width > 288 or height > 64:
+        scale=min(42.0*size_factor/(hi_y-lo_y), (width-14*size_factor)/(hi_x-lo_x))
+        padding=round(8*size_factor)
+        image_width=math.ceil((hi_x-lo_x)*scale)+padding;image_height=math.ceil((hi_y-lo_y)*scale)+padding
+        if image_width < padding or image_height < padding or image_width > width or image_height > height:
             continue
         supersample=3
-        image=Image.new('L',(width*supersample,height*supersample),255)
+        image=Image.new('L',(image_width*supersample,image_height*supersample),255)
         draw=ImageDraw.Draw(image)
         for path in paths:
-            xy=[((x-lo_x)*scale*supersample+4*supersample,(y-lo_y)*scale*supersample+4*supersample) for x,y in path]
+            xy=[((x-lo_x)*scale*supersample+padding*supersample/2,(y-lo_y)*scale*supersample+padding*supersample/2) for x,y in path]
             if len(xy)>1:
-                draw.line(xy,fill=0,width=2*supersample,joint='curve')
+                draw.line(xy,fill=0,width=max(1,round(2*size_factor*supersample)),joint='curve')
             elif xy:
-                x,y=xy[0];r=supersample
+                x,y=xy[0];r=size_factor*supersample
                 draw.ellipse((x-r,y-r,x+r,y+r),fill=0)
         identity=hashlib.sha256(json.dumps(item,sort_keys=True,ensure_ascii=False,separators=(',',':')).encode('utf8')).hexdigest()
-        image.resize((width,height),Image.Resampling.LANCZOS).save(images/(identity+'.png'))
+        image.resize((image_width,image_height),Image.Resampling.LANCZOS).save(images/(identity+'.png'))
         splits['val' if split_key(text) in held else 'train'].append({'img':identity+'.png','text':text})
     if len(splits['train']) < 8 or len(splits['val']) < 3:
         raise ValueError('Insufficient valid reviewed trajectories after split')
     for name, rows in splits.items():
         (destination/(name+'.json')).write_text(json.dumps(rows,ensure_ascii=False),encoding='utf8')
     (destination/'charset.json').write_text(json.dumps(charset,ensure_ascii=False),encoding='utf8')
+    (destination/'geometry.json').write_text(json.dumps({'height':height,'width':width}),encoding='utf8')
     return {name:len(rows) for name,rows in splits.items()}
 
 
@@ -85,9 +90,10 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('corpus');parser.add_argument('destination');parser.add_argument('charset')
     parser.add_argument('--profile',default='my-handwriting')
+    parser.add_argument('--height',type=int,default=64);parser.add_argument('--width',type=int,default=288)
     args=parser.parse_args()
     charset=json.loads(Path(args.charset).read_text(encoding='utf8'))
-    counts=prepare(Corpus(args.corpus,args.profile).examples(),args.destination,charset)
+    counts=prepare(Corpus(args.corpus,args.profile).examples(),args.destination,charset,height=args.height,width=args.width)
     print('Private reviewed word crops:', counts)
 
 

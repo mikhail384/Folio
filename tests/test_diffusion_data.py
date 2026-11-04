@@ -33,5 +33,16 @@ class PrivateWordDataTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             with self.assertRaises(ValueError):module.prepare([self.example('слово')],Path(temp)/'dataset',list('слово'))
 
+    def test_high_resolution_keeps_the_reviewed_split_and_dimensions(self):
+        examples=[self.example('слово'+str(i),offset=i*20) for i in range(20)]
+        charset=list('слово0123456789')
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/'high';counts=module.prepare(examples,path,charset,height=96,width=432)
+            self.assertEqual(counts['train']+counts['val'],20)
+            self.assertEqual(json.loads((path/'geometry.json').read_text()),{'height':96,'width':432})
+            from PIL import Image
+            with Image.open(next((path/'img').glob('*.png'))) as image:
+                self.assertLessEqual(image.width,432);self.assertLessEqual(image.height,96)
+
 
 if __name__=='__main__':unittest.main()
