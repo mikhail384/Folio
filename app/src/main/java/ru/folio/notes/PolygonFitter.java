@@ -17,7 +17,7 @@ final class PolygonFitter {
         Match unchanged=new Match("polygon",new ArrayList<>(v),0);
         if(ShapeRecognizer.hull(v).size()!=4)return unchanged;
         Ink.Pt a=v.get(0),b=v.get(1),c=v.get(2),d=v.get(3);
-        float p=parallel(a,b,d,c),q=parallel(b,c,a,d),near=(float)Math.sin(Math.toRadians(10));
+        float p=parallel(a,b,d,c),q=parallel(b,c,a,d),near=(float)Math.sin(Math.toRadians(14));
         float cx=(a.x+b.x+c.x+d.x)/4,cy=(a.y+b.y+c.y+d.y)/4;
         float vx=(b.x-a.x+c.x-d.x)/2,vy=(b.y-a.y+c.y-d.y)/2;
         float wx=(d.x-a.x+c.x-b.x)/2,wy=(d.y-a.y+c.y-b.y)/2;
@@ -57,7 +57,7 @@ final class PolygonFitter {
     static ArrayList<Ink.Pt> corners(float cx,float cy,float vx,float vy,float wx,float wy){ArrayList<Ink.Pt> out=new ArrayList<>();for(int[] sign:new int[][]{{-1,-1},{1,-1},{1,1},{-1,1}})out.add(ShapeRecognizer.pt(cx+(sign[0]*vx+sign[1]*wx)/2,cy+(sign[0]*vy+sign[1]*wy)/2));return out;}
     static boolean gentle(List<Ink.Pt> source,List<Ink.Pt> fitted,float diagonal){
         if(Math.signum(ShapeRecognizer.area(source))!=Math.signum(ShapeRecognizer.area(fitted))||ShapeRecognizer.hull(fitted).size()!=4)return false;
-        for(int i=0;i<4;i++){float local=Math.min(distance(source.get(i),source.get((i+1)%4)),distance(source.get(i),source.get((i+3)%4)));if(distance(source.get(i),fitted.get(i))>Math.min(diagonal*.035f,local*.12f))return false;}
+        for(int i=0;i<4;i++){float local=Math.min(distance(source.get(i),source.get((i+1)%4)),distance(source.get(i),source.get((i+3)%4)));if(distance(source.get(i),fitted.get(i))>Math.min(diagonal*.075f,local*.24f))return false;}
         return true;
     }
     static ArrayList<Ink.Pt> triangle(ArrayList<Ink.Pt> v){float[] side={distance(v.get(0),v.get(1)),distance(v.get(1),v.get(2)),distance(v.get(2),v.get(0))};float min=Math.min(side[0],Math.min(side[1],side[2])),max=Math.max(side[0],Math.max(side[1],side[2]));if((max-min)/max<.1f){Ink.Pt a=v.get(0),b=v.get(1),c=v.get(2);float dx=b.x-a.x,dy=b.y-a.y,sign=ShapeRecognizer.cross(a,b,c)>=0?1:-1;ArrayList<Ink.Pt> out=new ArrayList<>(v);out.set(2,ShapeRecognizer.pt((a.x+b.x)/2-dy*.8660254f*sign,(a.y+b.y)/2+dx*.8660254f*sign));return out;}for(int i=0;i<3;i++){Ink.Pt a=v.get(i),b=v.get((i+1)%3),c=v.get((i+2)%3);float dx=b.x-a.x,dy=b.y-a.y,ex=c.x-a.x,ey=c.y-a.y,len=(float)Math.hypot(dx,dy),other=(float)Math.hypot(ex,ey);if(Math.abs(dx*ex+dy*ey)/(len*other)<.10f){float sign=dx*ey-dy*ex>=0?1:-1;ArrayList<Ink.Pt> out=new ArrayList<>(v);out.set((i+2)%3,ShapeRecognizer.pt(a.x-dy/len*other*sign,a.y+dx/len*other*sign));return out;}}for(int i=0;i<3;i++){Ink.Pt a=v.get(i),b=v.get((i+1)%3),c=v.get((i+2)%3);float ab=distance(a,b),ac=distance(a,c);if(Math.abs(ab-ac)/Math.max(ab,ac)<.10f){float dx=c.x-b.x,dy=c.y-b.y,len=(float)Math.hypot(dx,dy),mx=(b.x+c.x)/2,my=(b.y+c.y)/2,height=((a.x-mx)*-dy+(a.y-my)*dx)/len;ArrayList<Ink.Pt> out=new ArrayList<>(v);out.set(i,ShapeRecognizer.pt(mx-dy/len*height,my+dx/len*height));return out;}}return v;}

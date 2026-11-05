@@ -12,7 +12,7 @@ def main():
         if hashlib.sha1(data).hexdigest()!=expected:raise RuntimeError('JSON-java artifact digest mismatch')
         dep.write_bytes(data)
     source=ROOT/'app/src/main/java/ru/folio/notes'
-    names=['Ink.java','InkGeometry.java','CanvasViewport.java','SpatialIndex.java','StrokeChunks.java','PaperSizes.java']
+    names=['Ink.java','InkGeometry.java','CanvasViewport.java','SpatialIndex.java','StrokeChunks.java','PaperSizes.java','InkJsonWriter.java']
     run(JDK/'bin'/('javac'+EXE),'-encoding','UTF-8','--release','8','-cp',dep,'-d',output,*[source/n for n in names],ROOT/'tests/DocumentUpgradeTests.java',ROOT/'tests/ContentModelTests.java')
     result=subprocess.run([str(JDK/'bin'/('java'+EXE)),'-Dfile.encoding=UTF-8','-cp',str(output)+os.pathsep+str(dep),'ru.folio.notes.DocumentUpgradeTests'],capture_output=True,text=True,encoding='utf-8',errors='replace')
     text=result.stdout+result.stderr;print(text);(ROOT/'dist/document-upgrade-tests.txt').write_text(text,encoding='utf-8')
