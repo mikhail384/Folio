@@ -73,7 +73,7 @@ final class PersonalHandwriting {
                         }
                         boolean merged=false;if(connect&&previousStroke>=0&&firstIndex<out.strokes.size()){
                             Ink.Stroke old=out.strokes.get(previousStroke),next=out.strokes.get(firstIndex);
-                            if(join(old,next,previousGlyph,glyph,gapStart,lineY+baselineJitter,scale,shear,height,color)){out.strokes.remove(firstIndex);merged=true;}
+                            if(CursiveJoin.merge(old,next,height*.38f)){out.strokes.remove(firstIndex);merged=true;}
                         }
                         if(out.strokes.size()>2000){out.strokes.clear();out.missing.add("слишком много штрихов");return out;}
                         if(out.strokes.size()>firstIndex||merged){previousStroke=out.strokes.size()-1;previousGlyph=glyph;previousCodePoint=cp;}else {previousGlyph=null;previousStroke=-1;previousCodePoint=-1;}
@@ -95,13 +95,6 @@ final class PersonalHandwriting {
             return out;
         }
         private static Ink.Pt place(Ink.Pt p,Glyph g,float x,float baseline,float scale,float shear){float localY=p.y-g.baseline;float px=x+(p.x-g.minX)*scale+shear*(-localY)*scale,py=baseline+localY*scale;return new Ink.Pt(px,py,Ink.clamp(p.p,.021f,2),p.tilt,p.angle,p.azimuth);}
-        private static boolean join(Ink.Stroke old,Ink.Stroke next,Glyph prev,Glyph current,float x,float baseline,float scale,float shear,float height,int color){
-            if(old.points.size()<2||next.points.size()<2)return false;Ink.Pt a=old.points.get(old.points.size()-1),a0=old.points.get(old.points.size()-2),b=next.points.get(0),b1=next.points.get(1);float distance=Ink.dist(a.x,a.y,b.x,b.y);if(distance<.2f||distance>height*.72f)return false;
-            float ax=a.x-a0.x,ay=a.y-a0.y,bx=b1.x-b.x,by=b1.y-b.y;float al=(float)Math.hypot(ax,ay),bl=(float)Math.hypot(bx,by);if(al<.01f||bl<.01f)return false;ax/=al;ay/=al;bx/=bl;by/=bl;
-            float control=Math.min(height*.25f,distance*.58f);float c1x=a.x+ax*control,c1y=a.y+ay*control,c2x=b.x-bx*control,c2y=b.y-by*control;int count=Math.max(3,Math.min(12,(int)Math.ceil(distance/Math.max(1,height*.06f))));
-            for(int i=1;i<count;i++){float t=i/(float)count,u=1-t;float px=u*u*u*a.x+3*u*u*t*c1x+3*u*t*t*c2x+t*t*t*b.x,py=u*u*u*a.y+3*u*u*t*c1y+3*u*t*t*c2y+t*t*t*b.y;old.points.add(new Ink.Pt(px,py,(a.p+b.p)*.5f,0,0));}
-            old.points.addAll(next.points);return true;
-        }
     }
 
     static Model load(MainActivity activity){
