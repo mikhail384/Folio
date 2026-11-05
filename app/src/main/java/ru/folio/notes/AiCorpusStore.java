@@ -25,7 +25,7 @@ final class AiCorpusStore {
         if(!source.equals("ocr")&&!source.equals("calibration"))throw new IllegalArgumentException("Некорректный источник");
         if(!kind.equals("text")&&!kind.equals("formula")&&!kind.equals("unknown"))throw new IllegalArgumentException("Некорректный тип");
         if(target==null)target="";if(target.length()>512)throw new IllegalArgumentException("Некорректное подключение");
-        HandwritingTraining.validate(strokes);
+        HandwritingTraining.validate(strokes,text);
         JSONObject item=new JSONObject().put("format","folio-training-example-v1").put("id",id).put("document_id",doc).put("page_id",page).put("text",text).put("source",source).put("reviewed",source.equals("calibration")).put("kind",kind).put("target",target).put("strokes",new JSONArray(strokes.toString()));
         byte[] bytes=item.toString().getBytes(StandardCharsets.UTF_8);if(bytes.length>MAX_ITEM)throw new IOException("Образец слишком большой");
         File dir=folder(doc);if(!dir.isDirectory()&&!dir.mkdirs())throw new IOException("Не удалось создать хранилище образцов");

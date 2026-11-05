@@ -24,7 +24,9 @@ final class HandwritingTraining {
         new Group("Химия","Сохраните формулы и уравнения своими штрихами.","H₂O","NaCl","2H₂ + O₂ → 2H₂O","CO₂ + H₂O → H₂CO₃"),
         new Group("Русские буквы","Отдельные буквы нужны, чтобы составлять новые слова.",chars("абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ")),
         new Group("Латиница","Отдельные буквы пригодятся в формулах.",chars("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")),
-        new Group("Цифры","Добавьте цифры для новых выражений.",chars("0123456789"))
+        new Group("Цифры","Добавьте цифры для новых выражений.",chars("0123456789")),
+        new Group("Пунктуация","Пишите по одному знаку; для точки достаточно лёгкого короткого касания.",chars(".,!?;:-–—()[]{}'\"«»")),
+        new Group("Знаки формул","Пишите каждый знак отдельно, как в своих формулах.",chars("+−=×÷*/^_²³₀₁₂₃→√π∞≈≤≥≠∫%"))
     };
     final File file;private JSONObject root;
     HandwritingTraining(File file){this.file=file;}
@@ -49,14 +51,16 @@ final class HandwritingTraining {
     }
     private JSONObject copy()throws Exception{ensure();return new JSONObject(root.toString());}
     private static void label(String s){if(s==null||s.isEmpty()||s.length()>32||s.matches(".*[\\r\\n\\u0000-\\u001f].*")||s.equals("__proto__")||s.equals("constructor")||s.equals("prototype"))throw new IllegalArgumentException("Недопустимая подпись образца");}
-    static void validate(JSONArray strokes)throws Exception{
+    static void validate(JSONArray strokes)throws Exception{validate(strokes,null);}
+    static void validate(JSONArray strokes,String label)throws Exception{
         if(strokes==null||strokes.length()<1||strokes.length()>MAX_STROKES)throw new IllegalArgumentException("Напишите образец пером");
         int count=0;double minX=Double.MAX_VALUE,minY=minX,maxX=-minX,maxY=-minX;
         for(int i=0;i<strokes.length();i++){JSONObject stroke=strokes.getJSONObject(i);JSONArray p=stroke.getJSONArray("points");if(p.length()<5||p.length()%5!=0)throw new IllegalArgumentException("Повреждён штрих");count+=p.length()/5;if(count>MAX_POINTS)throw new IllegalArgumentException("Образец слишком большой");
             for(int j=0;j<p.length();j+=5){double x=p.getDouble(j),y=p.getDouble(j+1),pressure=p.getDouble(j+2),tilt=p.getDouble(j+3),roll=p.getDouble(j+4);if(!Double.isFinite(x)||!Double.isFinite(y)||Math.abs(x)>10000000||Math.abs(y)>10000000||!Double.isFinite(pressure)||!Double.isFinite(tilt)||!Double.isFinite(roll)||pressure<0||pressure>2)throw new IllegalArgumentException("Повреждены точки образца");minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);}
         }
-        if(maxY-minY<1||maxX-minX<.1)throw new IllegalArgumentException("Напишите образец чуть крупнее");
+        double width=maxX-minX,height=maxY-minY;if((height<1||width<.1)&&!isSmallSymbol(label))throw new IllegalArgumentException("Напишите образец чуть крупнее");
     }
+    private static boolean isSmallSymbol(String label){if(label==null||label.codePointCount(0,label.length())!=1)return false;int type=Character.getType(label.codePointAt(0));return type==Character.CONNECTOR_PUNCTUATION||type==Character.DASH_PUNCTUATION||type==Character.START_PUNCTUATION||type==Character.END_PUNCTUATION||type==Character.OTHER_PUNCTUATION||type==Character.INITIAL_QUOTE_PUNCTUATION||type==Character.FINAL_QUOTE_PUNCTUATION||type==Character.MATH_SYMBOL||type==Character.MODIFIER_SYMBOL||type==Character.OTHER_SYMBOL;}
     synchronized JSONArray draft(String text)throws Exception{label(text);ensure();JSONArray d=root.getJSONObject("drafts").optJSONArray(text);return d==null?new JSONArray():new JSONArray(d.toString());}
     synchronized JSONObject info(String text)throws Exception{label(text);ensure();JSONObject item=root.getJSONObject("samples").optJSONObject(text);return item==null?null:new JSONObject(item.toString());}
     synchronized String sampleStatus(String text)throws Exception{label(text);ensure();JSONObject item=root.getJSONObject("samples").optJSONObject(text);return item==null?"":item.optString("status");}
@@ -65,7 +69,7 @@ final class HandwritingTraining {
         label(text);JSONObject c=copy(),drafts=c.getJSONObject("drafts");if(strokes==null||strokes.length()==0)drafts.remove(text);else {if(strokes.length()>MAX_STROKES)throw new IllegalArgumentException("Слишком много штрихов");drafts.put(text,new JSONArray(strokes.toString()));}write(c);
     }
     synchronized String save(String text,JSONArray strokes,String target)throws Exception{
-        label(text);validate(strokes);if(target==null)target="";if(target.length()>512)throw new IllegalArgumentException("Некорректное подключение");
+        label(text);validate(strokes,text);if(target==null)target="";if(target.length()>512)throw new IllegalArgumentException("Некорректное подключение");
         JSONObject c=copy(),samples=c.getJSONObject("samples"),old=samples.optJSONObject(text);if(old!=null&&"pending".equals(old.optString("status"))&&!old.optString("target").isEmpty()&&!old.optString("target").equals(target))throw new IllegalArgumentException("Этот образец ожидает отправки в другом подключении");
         String id=UUID.randomUUID().toString().replace("-","");samples.put(text,new JSONObject().put("id",id).put("text",text).put("strokes",new JSONArray(strokes.toString())).put("target",target).put("status","pending"));c.getJSONObject("drafts").remove(text);write(c);return id;
     }

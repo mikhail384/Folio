@@ -109,8 +109,8 @@ final class AgentBridge {
     void show(){
         LinearLayout box=a.column();Studio.addCard(a,box,Studio.row(a,"pen","ChatGPT / Codex","Чтение открытого холста, рукописные записи и рисунки",null));
         final Studio.Sheet[] agentSheet=new Studio.Sheet[1];
-        box.addView(a.pill("Написать в ChatGPT",true,()->{if(agentSheet[0]!=null)agentSheet[0].dismissThen(()->ChatGPTShare.compose(a));else ChatGPTShare.compose(a);}));
-        TextView shareInfo=a.text("Вопрос можно отправить вместе со снимком открытой страницы. Ответ откроется в ChatGPT.",12,Studio.MUTED,false);shareInfo.setLineSpacing(a.dp(3),1);LinearLayout.LayoutParams shareInfoParams=new LinearLayout.LayoutParams(-1,-2);shareInfoParams.topMargin=a.dp(8);box.addView(shareInfo,shareInfoParams);
+        box.addView(a.pill("Открыть ChatGPT в Folio",true,()->{if(agentSheet[0]!=null)agentSheet[0].dismissThen(()->ChatGPTStudio.open(a));else ChatGPTStudio.open(a);}));
+        TextView shareInfo=a.text("Ответ можно оставить в этом окне или добавить на открытый холст. Запросы идут напрямую в OpenAI по вашему разрешению ChatGPT.",12,Studio.MUTED,false);shareInfo.setLineSpacing(a.dp(3),1);LinearLayout.LayoutParams shareInfoParams=new LinearLayout.LayoutParams(-1,-2);shareInfoParams.topMargin=a.dp(8);box.addView(shareInfo,shareInfoParams);
         LinearLayout row=Studio.row(a,"cloud","Доступ к холсту","Для разных сетей подключите облако. VPN можно оставить включённым. Доступ действует, пока Folio открыт.",null);
         TextView info=a.text(displayStatus()+"\n"+url(),14,Studio.MUTED,false);info.setTextIsSelectable(true);
         Studio.Toggle toggle=new Studio.Toggle(a,enabled(),on->{a.prefs.edit().putBoolean("agent_enabled",on).apply();if(on)resume();else pause();info.setText(displayStatus()+"\n"+url());});row.addView(toggle,new LinearLayout.LayoutParams(a.dp(50),a.dp(48)));Studio.addCard(a,box,row);a.pad(info,0,16);box.addView(info);

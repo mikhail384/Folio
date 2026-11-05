@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" android:versionCode="46" android:versionName="1.23.0-preview.5">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" android:versionCode="48" android:versionName="1.23.0-preview.7">
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -11,13 +11,21 @@
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen.multitouch" android:required="false" />
-    <queries><package android:name="ru.focusflow.pen" /><package android:name="com.xiaomi.touchservice" /><package android:name="com.xiaomi.bluetooth" /><package android:name="com.openai.chatgpt" /></queries>
+    <queries><package android:name="ru.focusflow.pen" /><package android:name="com.xiaomi.touchservice" /><package android:name="com.xiaomi.bluetooth" /></queries>
     <application android:label="Folio" android:theme="@style/AppTheme" android:icon="@drawable/freenotes_icon" android:roundIcon="@drawable/freenotes_icon" android:extractNativeLibs="true" android:allowBackup="false" android:supportsRtl="true" android:hardwareAccelerated="true" android:largeHeap="true">
         <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
+        <activity android:name=".ChatGPTAuthReturn" android:exported="true" android:noHistory="true" android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="folio" android:host="chatgpt-auth" android:path="/return" />
+            </intent-filter>
+        </activity>
         <provider android:name=".PenProvider" android:authorities="ru.folio.notes.pen" android:exported="true" />
-        <provider android:name=".ChatGPTShareProvider" android:authorities="ru.folio.notes.chatgptshare" android:exported="false" android:grantUriPermissions="true" />
         <service android:name=".AiLearningService" android:exported="false" android:foregroundServiceType="dataSync" />
+        <service android:name=".ChatGPTAuthService" android:exported="false" android:foregroundServiceType="dataSync" />
     </application>
 </manifest>

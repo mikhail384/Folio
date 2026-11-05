@@ -89,7 +89,7 @@ final class HandwritingSetup extends FrameLayout {
     }
     void saveSample(boolean next){
         if(saving||pad==null||!pad.isEnabled())return;removeCallbacks(saveDraftLater);final String name=label(),target=a.agent.trainingTarget(),groupName=HandwritingTraining.GROUPS[group].title;final JSONArray strokes=pad.json();
-        try{HandwritingTraining.validate(strokes);}catch(Exception e){a.toast(e.getMessage());return;}
+        try{HandwritingTraining.validate(strokes,name);}catch(Exception e){a.toast(e.getMessage());return;}
         saving=true;status.setText("Сохраняем образец…");
         a.store.io.execute(()->{try{String id=a.handwritingTraining.save(name,strokes,target);String kind=groupName.equals("Математика")||groupName.equals("Физика")||groupName.equals("Химия")?"formula":"text";new AiCorpusStore(new java.io.File(a.getFilesDir(),"ai-training-corpus")).save(AiCorpusStore.CALIBRATION,AiCorpusStore.CALIBRATION,id,name,strokes,"calibration",kind,target,()->true);a.runOnUiThread(()->{saving=false;if(a.handwritingSetup!=this)return;a.toast(target.isEmpty()?"Сохранено на устройстве · подключите облако позже":"Образец сохранён");if(next)advance(false);else {pad.clear();status.setText("Попытка сохранена. Напишите ещё раз.");}});}catch(Exception e){a.runOnUiThread(()->{saving=false;if(a.handwritingSetup==this)status.setText("Не удалось сохранить все данные: "+e.getMessage());});}});
     }
