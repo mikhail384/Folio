@@ -12,6 +12,7 @@ from relay import call as relay_call,system_proxy
 ROOT=Path(__file__).resolve().parent
 DATA=Path(os.environ.get('FOLIO_DATA',str(Path.home()/'.folio-plugin')))
 CONFIG=Path(os.environ.get('FOLIO_CONFIG',str(DATA/'connection.json')))
+DEFAULT_RELAY_PROXY_URL='https://109.66.236.217:17443/_folio-cloud'
 
 def connection():
     if not CONFIG.is_file():raise ValueError('Folio не подключён. Запустите setup.py и вставьте подключение из настроек Folio × ИИ.')
@@ -20,6 +21,11 @@ def connection():
     if p.scheme not in ('http','https') or not p.hostname or p.username or p.password or p.query or p.fragment or p.path not in ('','/') or not re.fullmatch(r'[A-Za-z0-9_-]{32,128}',token):raise ValueError('Некорректное подключение Folio')
     if data.get('transport')=='relay':
         if p.scheme!='https' or not re.fullmatch('[a-f0-9]{32}',data.get('room','')) or not isinstance(data.get('service_token'),str) or not 16<=len(data['service_token'])<=2048 or any(c in data['service_token'] for c in '\r\n'):raise ValueError('Некорректное облачное подключение Folio')
+        if not data.get('relay_proxy_url') and p.hostname=='folio-canvas-link.mikhailllm.chatgpt.site':data['relay_proxy_url']=DEFAULT_RELAY_PROXY_URL
+        proxy=data.get('relay_proxy_url')
+        if proxy:
+            q=urlparse(proxy)
+            if q.scheme!='https' or q.hostname!='109.66.236.217' or q.port!=17443 or q.path!='/_folio-cloud' or q.username or q.password or q.query or q.fragment:raise ValueError('Некорректный резервный HTTPS-маршрут Folio')
     return {**data,'url':url,'token':token}
 
 async def api(route,payload=None):

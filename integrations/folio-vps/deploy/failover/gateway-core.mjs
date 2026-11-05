@@ -1,4 +1,5 @@
 import http from 'node:http';
+import https from 'node:https';
 import {mkdirSync,readFileSync,writeFileSync,renameSync,existsSync,openSync,fsyncSync,closeSync,rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
@@ -6,6 +7,33 @@ import {execFileSync} from 'node:child_process';
 
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const maxResponse=512*1024*1024;
+const cloudRelayHost='folio-canvas-link.mikhailllm.chatgpt.site';
+const cloudRelayAgent=new https.Agent({keepAlive:true,maxSockets:32});
+const cloudRelayWindow=60_000,cloudRelayPerRoomLimit=360,cloudRelayRequests=new Map();
+function allowCloudRelay(room,now=Date.now()){
+  let entry=cloudRelayRequests.get(room);
+  if(!entry){
+    if(cloudRelayRequests.size>=4096){for(const [key,value] of cloudRelayRequests)if(now-value.start>=cloudRelayWindow)cloudRelayRequests.delete(key);}
+    if(cloudRelayRequests.size>=4096)return false;
+    entry={start:now,count:0};cloudRelayRequests.set(room,entry);
+  }else if(now-entry.start>=cloudRelayWindow){entry={start:now,count:0};cloudRelayRequests.set(room,entry);}
+  if(entry.count>=cloudRelayPerRoomLimit)return false;
+  entry.count++;
+  return true;
+}
+function cloudRelayRequest(operation,body,headers){return new Promise((resolve,reject)=>{
+  const outgoing={authorization:headers.authorization,'oai-sites-authorization':headers['oai-sites-authorization'],'content-type':'application/json','accept':'application/json','cache-control':'no-store','content-length':String(body.length)};
+  const call=https.request({hostname:cloudRelayHost,servername:cloudRelayHost,port:443,method:'POST',path:'/relay/v1/'+operation,headers:outgoing,agent:cloudRelayAgent,timeout:12_000},response=>{
+    const chunks=[];let size=0;
+    response.on('data',chunk=>{size+=chunk.length;if(size>16*1024*1024){call.destroy(new Error('Cloud relay response too large'));return;}chunks.push(chunk);});
+    response.on('aborted',()=>reject(new Error('Cloud relay response interrupted')));
+    response.on('error',reject);
+    response.on('end',()=>resolve({status:response.statusCode,headers:response.headers,body:Buffer.concat(chunks)}));
+  });
+  call.on('timeout',()=>call.destroy(new Error('Cloud relay timeout')));
+  call.on('error',reject);
+  call.end(body);
+});}
 function request(port,method,path,headers={},body=Buffer.alloc(0),timeout=45000,limit=maxResponse){return new Promise((resolve,reject)=>{
   const call=http.request({host:'127.0.0.1',port,method,path,headers,timeout},response=>{
     const chunks=[];let total=0;response.on('data',chunk=>{total+=chunk.length;if(total>limit){call.destroy(new Error('Response too large'));return;}chunks.push(chunk);});
@@ -52,8 +80,26 @@ export function createGateway({origin,root,checkpointKey,archiveScript,primaryPo
   async function probe(){if(closed||mode!=='primary')return;try{const response=await request(primaryPort,'GET','/health',{},Buffer.alloc(0),probeTimeout,4096);if(response.status!==200||!JSON.parse(response.body).ready)throw new Error('Primary not ready');failures=0;if(!existsSync(latest))await checkpoint();}
     catch{if(++failures>=misses){failures=0;try{await promote();}catch{}}}}
   async function handle(req,res){
-    const path=new URL(req.url,origin).pathname;if(path.startsWith('/internal/')){res.writeHead(404);res.end();return;}
+    const parsedUrl=new URL(req.url,origin),path=parsedUrl.pathname,cloudRelay=path.match(/^\/_folio-cloud\/relay\/v1\/(request|result)$/);
+    if(path.startsWith('/internal/')){res.writeHead(404);res.end();return;}
     let body;try{const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>8*1024*1024)throw new Error('Request too large');chunks.push(chunk);}body=Buffer.concat(chunks);}catch{res.writeHead(413);res.end();return;}
+    if(path.startsWith('/_folio-cloud/')){
+      const json=(status,value,extra={})=>{const data=Buffer.from(JSON.stringify(value));res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':String(data.length),...extra});res.end(data);};
+      if(!cloudRelay||parsedUrl.search||req.method!=='POST'){json(404,{error:'Unknown Folio relay route'});return;}
+      const contentType=String(req.headers['content-type']||'').toLowerCase(),authorization=req.headers.authorization,service=req.headers['oai-sites-authorization'];
+      if(!contentType.startsWith('application/json')||typeof authorization!=='string'||!/^Bearer [A-Za-z0-9_-]{16,256}$/.test(authorization)||typeof service!=='string'||!/^Bearer [^\r\n]{16,2048}$/.test(service)){json(401,{error:'Folio relay credentials required'});return;}
+      let value;try{value=JSON.parse(body.toString('utf8'));}catch{json(400,{error:'Invalid Folio relay request'});return;}
+      if(!value||typeof value!=='object'||Array.isArray(value)||typeof value.room!=='string'||!/^[a-f0-9]{32}$/.test(value.room)||typeof value.id!=='string'||!/^[a-f0-9-]{32,36}$/.test(value.id)||(cloudRelay[1]==='request'&&(!value.envelope||typeof value.envelope!=='object'||typeof value.envelope.iv!=='string'||typeof value.envelope.data!=='string'))){json(400,{error:'Invalid Folio relay request'});return;}
+      if(!allowCloudRelay(value.room)){json(429,{error:'Folio relay is busy; retry shortly'},{'Retry-After':'1'});return;}
+      try{
+        const upstream=await cloudRelayRequest(cloudRelay[1],body,{authorization,'oai-sites-authorization':service});
+        const outgoing={'Content-Type':upstream.headers['content-type']||'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':String(upstream.body.length)};
+        if(upstream.headers['retry-after'])outgoing['Retry-After']=upstream.headers['retry-after'];
+        if(upstream.headers['cf-ray'])outgoing['CF-Ray']=upstream.headers['cf-ray'];
+        res.writeHead(upstream.status||502,outgoing);res.end(upstream.body);
+      }catch{json(502,{error:'Folio Cloud временно недоступен через HTTPS-шлюз'});}
+      return;
+    }
     const headers={...req.headers};for(const name of Object.keys(headers))if(name==='forwarded'||name.startsWith('x-forwarded-')||name==='connection'||name==='transfer-encoding')delete headers[name];
     const url=new URL(origin);headers.host=url.host;headers['x-forwarded-proto']='https';headers['x-forwarded-host']=url.host;headers['x-forwarded-port']=url.port||'443';headers['x-forwarded-for']=req.socket.remoteAddress||'';headers['content-length']=String(body.length);
     try{
