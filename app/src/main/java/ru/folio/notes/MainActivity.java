@@ -33,6 +33,7 @@ public final class MainActivity extends Activity implements NotesView.Listener,P
     final ArrayList<View> chrome=new ArrayList<>();
     SharedPreferences prefs;
     final Handler ui=new Handler(Looper.getMainLooper());
+    static final long AUTOSAVE_INTERVAL_MS=5*60*1000L;
     final ArrayList<Ink.Doc> docs=new ArrayList<>();
     final ArrayList<String> folders=new ArrayList<>();
     FrameLayout root,body;
@@ -46,14 +47,14 @@ public final class MainActivity extends Activity implements NotesView.Listener,P
     boolean systemBarsVisible=true;
     Ink.Doc exportSnapshot;
     int exportPage;
-    long revision,savedRevision;
+    long revision,savedRevision,activeDocGeneration,saveSerial;
+    final HashMap<String,Long> queuedSaves=new HashMap<>(),queuedSaveTokens=new HashMap<>();
     String learningKey;
     FrameLayout learningOverlay;
     Studio.Sheet penSettingsDialog;
     PenGestures taps=new PenGestures(300);
     final Runnable tapTimeout=()->{if(penActive())taps.flush(SystemClock.uptimeMillis(),this);else taps.cancel();};
-    final Runnable saveLater=new Runnable(){public void run(){if(canvas!=null&&(canvas.penId!=-1||canvas.draft!=null||canvas.gestureBefore!=null||canvas.moving)){ui.postDelayed(this,350);return;}saveNow();}};
-    final Runnable learningLater=()->AiLearningService.kick(this);
+    final Runnable periodicSave=new Runnable(){public void run(){if(!resumed||current==null)return;if(canvas!=null&&(canvas.penId!=-1||canvas.draft!=null||canvas.gestureBefore!=null||canvas.moving)){ui.postDelayed(this,1000);return;}saveIfDirty();ui.postDelayed(this,AUTOSAVE_INTERVAL_MS);}};
     final Runnable tick=new Runnable(){public void run(){if(nativePenOnly()&&penSdk!=null)penSdk.update();if(rotation!=null&&!nativePenOnly())rotation.update();if(haptics!=null)haptics.update();if(bridgeInfo!=null){String info=bridgeText();if(!TextUtils.equals(bridgeInfo.getText(),info))bridgeInfo.setText(info);}if(zoomLabel!=null&&canvas!=null){String caption=zoomCaption();if(!android.text.TextUtils.equals(zoomLabel.getText(),caption))zoomLabel.setText(caption);}if(resumed)ui.postDelayed(this,200);}};
     String pageCaption(){return (current.page().infinite?"∞ · ":"")+(current.current+1)+" / "+current.pages.size();}
     String zoomCaption(){if(canvas==null)return "100%";float percent=canvas.zoom*100;String number=percent>=1?String.valueOf(Math.round(percent)):String.format(java.util.Locale.ROOT,percent>=.1f?"%.1f":percent>=.01f?"%.2f":"%.4f",percent);return number+(canvas.page.infinite?"%  ⌖":"%  ◇");}
@@ -77,10 +78,26 @@ public final class MainActivity extends Activity implements NotesView.Listener,P
     Icons icon(String name,String label,Runnable click){Icons v=new Icons(this,name);v.tint=ACCENT;v.setContentDescription(label);v.setTooltipText(label);v.setBackground(Studio.ripple(this,Color.TRANSPARENT,14));v.setOnClickListener(x->click.run());v.setClickable(true);v.setFocusable(true);Studio.press(v);return v;}
     void addIcon(LinearLayout row,String name,String label,Runnable click){row.addView(icon(name,label,click),new LinearLayout.LayoutParams(dp(42),dp(42)));}
     TextView pill(String label,boolean solid,Runnable click){return Studio.button(this,label,solid,click);}
-    void replaceRoot(View v){if(intro!=null)intro.closeNow();if(handwritingSetup!=null){handwritingSetup.persistDraft();handwritingSetup.closeNow();}closeLearning();for(int i=root.getChildCount()-1;i>=0;i--)if(root.getChildAt(i)!=launch)root.removeViewAt(i);root.addView(v,0,new FrameLayout.LayoutParams(-1,-1));bridgeInfo=null;}
+    void replaceRoot(View v){if(current==null)ui.removeCallbacks(periodicSave);if(intro!=null)intro.closeNow();if(handwritingSetup!=null){handwritingSetup.persistDraft();handwritingSetup.closeNow();}closeLearning();for(int i=root.getChildCount()-1;i>=0;i--)if(root.getChildAt(i)!=launch)root.removeViewAt(i);root.addView(v,0,new FrameLayout.LayoutParams(-1,-1));bridgeInfo=null;}
     void persist(Ink.Doc doc){Ink.Doc snapshot=doc.copy();store.enqueueWrite(snapshot,e->{if(e!=null)runOnUiThread(()->error("Не удалось сохранить документ",e));else AiLearningService.saved();});}
-    void saveNow(){ui.removeCallbacks(saveLater);if(current==null)return;canvas.finishGesture(false);canvas.stashViewport();Ink.Doc target=current,snapshot=current.copy();long version=revision;if(status!=null)status.setText("Сохранение…");store.enqueueWrite(snapshot,e->{if(e!=null){runOnUiThread(()->error("Не удалось сохранить. Экспортируйте копию",e));return;}AiLearningService.saved();runOnUiThread(()->{if(current==target&&revision==version){savedRevision=version;ui.removeCallbacks(backupLater);ui.postDelayed(backupLater,30000);if(status!=null)status.setText("Все изменения сохранены");}});});}
-    @Override public void changed(){if(current==null)return;current.modified=System.currentTimeMillis();revision++;StudioWorkspace.history(this);if(status!=null)status.setText("Сохранение…");ui.removeCallbacks(saveLater);ui.postDelayed(saveLater,500);if(AiLearningPermissions.allowed(prefs,current.id)){ui.removeCallbacks(learningLater);ui.postDelayed(learningLater,1500);}if(pageCount!=null)pageCount.setText(pageCaption());}
+    void armPeriodicSave(){ui.removeCallbacks(periodicSave);if(resumed&&current!=null)ui.postDelayed(periodicSave,AUTOSAVE_INTERVAL_MS);}
+    void saveIfDirty(){if(current!=null&&revision!=savedRevision)saveNow(false);}
+    void saveNow(){saveNow(true);}
+    void saveNow(boolean force){
+        if(current==null)return;
+        if(canvas!=null){canvas.finishGesture(false);canvas.stashViewport();}
+        Ink.Doc target=current;long version=revision,generation=activeDocGeneration;Long queued=queuedSaves.get(target.id);
+        if(!force&&(version==savedRevision||(queued!=null&&queued.longValue()==version)))return;
+        Ink.Doc snapshot=target.copy();long token=++saveSerial;queuedSaves.put(target.id,version);queuedSaveTokens.put(target.id,token);
+        if(status!=null)status.setText("Сохранение…");
+        try{store.enqueueWrite(snapshot,e->runOnUiThread(()->{
+            if(Objects.equals(queuedSaveTokens.get(target.id),token)){queuedSaves.remove(target.id);queuedSaveTokens.remove(target.id);}
+            if(e!=null){error("Не удалось сохранить документ",e);return;}
+            AiLearningService.saved();
+            if(current==target&&activeDocGeneration==generation){savedRevision=version;if(revision==version){ui.removeCallbacks(backupLater);ui.postDelayed(backupLater,30000);if(status!=null)status.setText("Все изменения сохранены");}}
+        }));}catch(RuntimeException failure){if(Objects.equals(queuedSaveTokens.get(target.id),token)){queuedSaves.remove(target.id);queuedSaveTokens.remove(target.id);}error("Не удалось сохранить документ",failure);}
+    }
+    @Override public void changed(){if(current==null)return;current.modified=System.currentTimeMillis();revision++;StudioWorkspace.history(this);if(status!=null)status.setText("Есть несохранённые изменения");if(pageCount!=null)pageCount.setText(pageCaption());}
     ToolUpdates toolUpdates;
     ToolUpdates toolUpdates(){if(toolUpdates==null)toolUpdates=new ToolUpdates(ui,this::writePenPrefs,this::refreshTools);return toolUpdates;}
     @Override public void toolChanged(){if(canvas!=null)toolUpdates().changed();}
@@ -101,7 +118,7 @@ public final class MainActivity extends Activity implements NotesView.Listener,P
     }
     final class Cover extends View {Ink.Doc d;Cover(Ink.Doc d){super(MainActivity.this);this.d=d;setLayerType(View.LAYER_TYPE_SOFTWARE,null);}
         protected void onDraw(Canvas c){Paint p=new Paint(3);float w=getWidth(),h=getHeight();p.setColor(d.cover);c.drawRoundRect(new RectF(0,0,w,h),dp(15),dp(15),p);p.setColor(0x15000000);c.drawRoundRect(new RectF(dp(12),0,dp(15),h),dp(1),dp(1),p);p.setColor(0x18ffffff);c.drawCircle(w,h*.9f,w*.75f,p);p.setColor(0x30ffffff);c.drawCircle(w*.9f,-h*.1f,w*.65f,p);p.setColor(0xff425274);p.setTextSize(dp(10));p.setTypeface(Typeface.create("sans-serif-medium",0));c.drawText("F O L I O",dp(30),dp(34),p);p.setTextSize(dp(18));float y=h*.53f;String title=d.title;while(p.measureText(title)>w-dp(55)&&title.length()>1)title=title.substring(0,title.length()-1);if(!title.equals(d.title))title+="…";c.drawText(title,dp(28),y,p);p.setColor(0x55617193);p.setStrokeWidth(dp(1));c.drawLine(dp(28),y+dp(18),Math.min(w-dp(28),dp(95)),y+dp(18),p);p.setTextSize(dp(9));p.setColor(0xff7380a0);c.drawText("ЗАМЕТКИ И МЫСЛИ",dp(28),h-dp(26),p);}}
-    void open(Ink.Doc doc){flushToolUpdates();if(current!=null&&current!=doc){audio.pause();saveNow();backup.automatic(current.copy());}current=doc;prefs.edit().putString("last",doc.id).apply();revision=savedRevision=0;focusMode=false;showPages=wide();buildEditor();}
+    void open(Ink.Doc doc){flushToolUpdates();if(current!=null&&current!=doc){audio.pause();saveNow();backup.automatic(current.copy());}activeDocGeneration++;current=doc;prefs.edit().putString("last",doc.id).apply();revision=savedRevision=0;focusMode=false;showPages=wide();buildEditor();armPeriodicSave();}
     void buildEditor(){StudioWorkspace.editor(this);}
     void refreshTools(){StudioWorkspace.refresh(this);}
     void rebuildPageStrip(){if(current==null||body==null)return;LinearLayout work=(LinearLayout)body.getParent(),holder=(LinearLayout)work.getChildAt(1);holder.removeAllViews();holder.setVisibility(showPages?View.VISIBLE:View.GONE);if(!showPages)return;holder.setBackgroundColor(0xff1e2228);ScrollView scroll=new ScrollView(this);thumbs=column();pad(thumbs,12,14);for(int i=0;i<current.pages.size();i++){final int index=i;LinearLayout item=column();item.setGravity(Gravity.CENTER);item.setBackground(bg(i==current.current?0xff233c56:Color.TRANSPARENT,11));pad(item,7,8);View thumb=new PageThumb(current.pages.get(i));thumb.setContentDescription("Страница "+(i+1));item.addView(thumb,new LinearLayout.LayoutParams(dp(79),dp(105)));TextView number=text((current.pages.get(i).bookmark.isEmpty()?"":"◆ ")+(i+1),10,i==current.current?ACCENT:MUTED,false);number.setGravity(Gravity.CENTER);LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(-1,-2);np.topMargin=dp(7);item.addView(number,np);item.setOnClickListener(v->goPage(index));item.setOnLongClickListener(v->{pageMenu(index);return true;});LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(8);thumbs.addView(item,lp);}scroll.addView(thumbs);holder.addView(scroll,new LinearLayout.LayoutParams(dp(118),0,1));TextView add=pill("+",false,this::addPage);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(43));lp.setMargins(dp(12),0,dp(12),dp(12));holder.addView(add,lp);}
@@ -180,12 +197,12 @@ public final class MainActivity extends Activity implements NotesView.Listener,P
     @Override public void gesture(String name){if(actions!=null)actions.run(name);}
     void toast(String message){if(!isDestroyed())Toast.makeText(this,message,Toast.LENGTH_SHORT).show();}
     void error(String title,Throwable e){android.util.Log.e("Folio",title,e);if(!isDestroyed())new Studio.Builder(this).setTitle(title).setMessage(e.getMessage()==null?e.getClass().getSimpleName():e.getMessage()).setPositiveButton("Понятно",null).show();}
-    @Override protected void onResume(){super.onResume();resumed=true;if(agent!=null)agent.resume();AiLearningService.kick(this);
+    @Override protected void onResume(){super.onResume();resumed=true;armPeriodicSave();if(agent!=null)agent.resume();AiLearningService.kick(this);
         if(penSdk==null)penSdk=new ru.folio.penbridge.XiaomiPenSdk(this,true,new ru.folio.penbridge.XiaomiPenSdk.Sink(){
             public void gesture(int key,boolean down,long time){if(!penActive())return;if(key==194)actions.squeeze(time,down?1:0);else if(down){if(key==195)doubleTap();else actions.run(key==196?"up":"down");}}
             public void rotation(int degree,long time){if(!penActive()||!canvas.rotationEnabled)return;PenProvider.rotationSource="Xiaomi official SDK";PenProvider.rotationDegrees=degree;PenProvider.rotationAt=SystemClock.uptimeMillis();PenProvider.rotationEvents++;canvas.rotation(degree,time);}
         });if(nativePenOnly())penSdk.resume();else penSdk.pause();PenProvider.activity=new java.lang.ref.WeakReference<>(this);priorityChanged();systemBars(false);if(StylusDevices.bridge()&&!nativePenOnly()){if(autoAdb==null)autoAdb=new ru.folio.penbridge.AutoAdbClient(this);autoAdb.resume();}else if(autoAdb!=null)autoAdb.pause();ui.removeCallbacks(tick);ui.post(tick);}
-    @Override protected void onPause(){AiLearningService.kick(this);ui.removeCallbacks(learningLater);if(handwritingSetup!=null)handwritingSetup.persistDraft();if(agent!=null)agent.pause();if(penSdk!=null)penSdk.pause();if(autoAdb!=null)autoAdb.pause();flushToolUpdates();if(eyedropper!=null)eyedropper.close();resumed=false;priorityChanged();if(audio!=null)audio.pause();ui.removeCallbacks(backupLater);if(nativePenOnly()&&penSdk!=null)penSdk.update();if(rotation!=null&&!nativePenOnly())rotation.update();if(haptics!=null)haptics.update();taps.cancel();ui.removeCallbacks(tapTimeout);actions.cancel();closeLearning();if(canvas!=null){canvas.finishGesture(false);canvas.clearLaser();canvas.closePalette();canvas.hoverHidden.clear();canvas.hoverX=-1;saveNow();if(backup!=null)backup.automatic(current.copy());}ui.removeCallbacks(tick);systemBars(true);super.onPause();}
+    @Override protected void onPause(){AiLearningService.kick(this);if(handwritingSetup!=null)handwritingSetup.persistDraft();if(agent!=null)agent.pause();if(penSdk!=null)penSdk.pause();if(autoAdb!=null)autoAdb.pause();flushToolUpdates();if(eyedropper!=null)eyedropper.close();resumed=false;ui.removeCallbacks(periodicSave);priorityChanged();if(audio!=null)audio.pause();ui.removeCallbacks(backupLater);if(nativePenOnly()&&penSdk!=null)penSdk.update();if(rotation!=null&&!nativePenOnly())rotation.update();if(haptics!=null)haptics.update();taps.cancel();ui.removeCallbacks(tapTimeout);actions.cancel();closeLearning();if(canvas!=null){canvas.finishGesture(false);canvas.clearLaser();canvas.closePalette();canvas.hoverHidden.clear();canvas.hoverX=-1;saveNow();if(backup!=null)backup.automatic(current.copy());}ui.removeCallbacks(tick);systemBars(true);super.onPause();}
     @Override public void onWindowFocusChanged(boolean focus){super.onWindowFocusChanged(focus);focused=focus;if(nativePenOnly()&&penSdk!=null)penSdk.update();if(rotation!=null&&!nativePenOnly())rotation.update();if(haptics!=null)haptics.update();if(focus&&canvas!=null)systemBars(false);if(!focus){taps.cancel();ui.removeCallbacks(tapTimeout);actions.cancel();if(canvas!=null){canvas.finishGesture(false);canvas.clearLaser();canvas.hoverHidden.clear();canvas.hoverX=-1;canvas.invalidate();}}}
     @Override public void onConfigurationChanged(Configuration c){int slide=intro==null?-1:intro.index;HandwritingSetup prior=handwritingSetup;int setupPage=prior==null?0:prior.page,setupGroup=prior==null?0:prior.group,setupIndex=prior==null?0:prior.index;JSONArray strokes=prior==null||prior.pad==null||!prior.pad.isEnabled()?null:prior.pad.json();super.onConfigurationChanged(c);if(ready){if(current==null)library();else buildEditor();if(slide>=0){Onboarding.show(this,true);intro.index=slide;intro.fill();}else if(prior!=null){HandwritingSetup.show(this,false);if(handwritingSetup!=null)handwritingSetup.restoreAfterLayout(setupPage,setupGroup,setupIndex,strokes);}}}
     @Override public void onBackPressed(){if(eyedropper!=null){eyedropper.close();return;}if(handwritingSetup!=null){handwritingSetup.back();return;}if(intro!=null){if(intro.index>0)intro.go(intro.index-1);else intro.finish(true);}else if(learningKey!=null)closeLearning();else if(canvas!=null&&(canvas.radial||canvas.radialClosing)){canvas.hidePalette();}else if(current!=null)library();else super.onBackPressed();}

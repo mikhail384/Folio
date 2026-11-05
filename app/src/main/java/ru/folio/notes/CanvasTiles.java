@@ -18,16 +18,18 @@ final class CanvasTiles {
     }
     final LinkedHashMap<Key,Bitmap> tiles=new LinkedHashMap<>(256,.75f,true);
     final HashMap<Key,Long> pending=new HashMap<>();
+    final HashMap<Key,Runnable> queuedTasks=new HashMap<>();
+    final HashMap<Key,Long> retryAt=new HashMap<>();
     final Paint paint=new Paint(Paint.FILTER_BITMAP_FLAG);
     final Handler main=new Handler(Looper.getMainLooper());
     ThreadPoolExecutor workers;
-    long revision;boolean asyncDisabled;
+    long revision;
     int level=Integer.MIN_VALUE;float unit;
 
-    void cancelPending(){revision++;pending.clear();if(workers!=null)workers.getQueue().clear();}
+    void cancelPending(){revision++;pending.clear();queuedTasks.clear();retryAt.clear();if(workers!=null)workers.getQueue().clear();}
     // The hardware canvas may still reference a tile from the preceding frame.
     // Drop cache ownership and let Android release it after that frame completes.
-    void clear(){cancelPending();asyncDisabled=false;tiles.clear();}
+    void clear(){cancelPending();tiles.clear();}
     void release(){clear();if(workers!=null){workers.shutdownNow();workers=null;}}
     float side(Key k){return SIZE/CanvasViewport.levelScale(k.level);}
     boolean intersects(Key k,float[] b){float u=CanvasViewport.levelScale(k.level),s=SIZE/u,g=GUTTER/u,l=k.x*s,t=k.y*s;return CanvasViewport.overlaps(b,l-g,t-g,l+s+g,t+s+g);}
@@ -48,6 +50,7 @@ final class CanvasTiles {
         try{Canvas c=new Canvas(bitmap);c.translate(GUTTER-l*u,GUTTER-t*u);c.scale(u,u);InkRenderer.region(c,page,background,strokes,Collections.emptySet(),l-g,t-g,l+s+g,t+s+g,u);return bitmap;}
         catch(RuntimeException|OutOfMemoryError e){bitmap.recycle();throw e;}
     }
+    void drawPaperTile(Canvas c,Ink.Page page,Key key){float u=CanvasViewport.levelScale(key.level),s=SIZE/u,g=GUTTER/u,l=key.x*s,t=key.y*s;c.save();c.clipRect(l,t,l+s,t+s);InkRenderer.paperRegion(c,page,null,l-g,t-g,l+s+g,t+s+g,u);c.restore();}
     void paintTile(Canvas c,Key k,Bitmap bitmap){float u=CanvasViewport.levelScale(k.level),s=SIZE/u,g=GUTTER/u,l=k.x*s,t=k.y*s;c.save();c.clipRect(l,t,l+s,t+s);c.drawBitmap(bitmap,null,new RectF(l-g,t-g,l+s+g,t+s+g),paint);c.restore();}
     // Only use an older zoom level when every part of the requested tile is covered.
     ArrayList<Key> fallback(Key key,float viewLeft,float viewTop,float viewRight,float viewBottom){
@@ -61,18 +64,22 @@ final class CanvasTiles {
     Ink.Page snapshot(Ink.Page page){Ink.Page copy=new Ink.Page();copy.layers.clear();for(Ink.Layer layer:page.layers)copy.layers.add(layer.copy());copy.pattern=page.pattern;copy.background=page.background;copy.paper=page.paper;copy.lines=page.lines;copy.width=page.width;copy.height=page.height;copy.spacing=page.spacing;copy.infinite=page.infinite;return copy;}
     void schedule(View view,Ink.Page page,SpatialIndex index,Set<Ink.Stroke> mutable,Key key){
         if(pending.containsKey(key))return;
-        if(workers==null||workers.isShutdown()){workers=new ThreadPoolExecutor(2,2,30,TimeUnit.SECONDS,new ArrayBlockingQueue<>(48),r->{Thread t=new Thread(r,"Folio tile renderer");t.setDaemon(true);return t;});workers.allowCoreThreadTimeOut(true);}
+        Long retry=retryAt.get(key);if(retry!=null&&System.nanoTime()<retry)return;
+        if(workers==null||workers.isShutdown()){workers=new ThreadPoolExecutor(2,2,30,TimeUnit.SECONDS,new ArrayBlockingQueue<>(48),r->{Thread t=new Thread(()->{try{android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);}catch(RuntimeException ignored){}r.run();},"Folio tile renderer");t.setDaemon(true);return t;});workers.allowCoreThreadTimeOut(true);}
         if(workers.getQueue().remainingCapacity()==0)return;
         float u=CanvasViewport.levelScale(key.level),s=SIZE/u,g=GUTTER/u,l=key.x*s,t=key.y*s;
         ArrayList<Ink.Stroke> strokes=index.query(l-g,t-g,l+s+g,t+s+g);for(int i=0;i<strokes.size();i++)if(mutable.contains(strokes.get(i)))strokes.set(i,strokes.get(i).copy());
         Ink.Page paper=snapshot(page);long ticket=revision;pending.put(key,ticket);
-        try{workers.execute(()->{Bitmap made=null;try{made=render(paper,null,strokes,key);}catch(RuntimeException|OutOfMemoryError ignored){}final Bitmap result=made;main.post(()->{Long current=pending.get(key);if(current==null||current.longValue()!=ticket||ticket!=revision){if(result!=null)result.recycle();return;}pending.remove(key);if(result!=null){tiles.put(key,result);trim();}else asyncDisabled=true;view.postInvalidateOnAnimation();});});}
-        catch(RejectedExecutionException ignored){pending.remove(key);}
+        Runnable task=()->{Bitmap made=null;try{made=render(paper,null,strokes,key);}catch(RuntimeException|OutOfMemoryError ignored){}final Bitmap result=made;main.post(()->{Long current=pending.get(key);if(current==null||current.longValue()!=ticket||ticket!=revision){if(current!=null&&current.longValue()==ticket){pending.remove(key);queuedTasks.remove(key);}if(result!=null)result.recycle();return;}queuedTasks.remove(key);pending.remove(key);if(result!=null){retryAt.remove(key);tiles.put(key,result);trim();}else retryAt.put(key,System.nanoTime()+2_000_000_000L);view.postInvalidateOnAnimation();});};
+        queuedTasks.put(key,task);try{workers.execute(task);}
+        catch(RejectedExecutionException ignored){pending.remove(key);queuedTasks.remove(key);}
     }
+    void cancelObsoleteQueued(Set<Key> visible){if(workers==null)return;Iterator<Map.Entry<Key,Runnable>> it=queuedTasks.entrySet().iterator();while(it.hasNext()){Map.Entry<Key,Runnable> item=it.next();if(!visible.contains(item.getKey())&&workers.getQueue().remove(item.getValue())){pending.remove(item.getKey());it.remove();}}}
     void draw(View view,Canvas c,Ink.Page page,Bitmap background,SpatialIndex index,Set<Ink.Stroke> hidden,Set<Ink.Stroke> mutable,float l,float t,float r,float b,float scale){
         int next=CanvasViewport.level(scale,r-l,b-t);if(level!=next){level=next;unit=CanvasViewport.levelScale(next);}if(!hidden.isEmpty()){direct(c,page,background,index,hidden,l,t,r,b,scale);return;}
         float side=SIZE/unit;int x1=(int)Math.floor(l/side),y1=(int)Math.floor(t/side),x2=(int)Math.floor(r/side),y2=(int)Math.floor(b/side);
-        try{for(long y=y1;y<=y2;y++)for(long x=x1;x<=x2;x++){Key key=new Key(level,(int)x,(int)y);Bitmap bitmap=tiles.get(key);if(bitmap==null){ArrayList<Key> old=background==null&&!asyncDisabled?fallback(key,l,t,r,b):null;if(old!=null){float left=key.x*side,top=key.y*side;c.save();c.clipRect(left,top,left+side,top+side);for(Key previous:old)paintTile(c,previous,tiles.get(previous));c.restore();schedule(view,page,index,mutable,key);continue;}float left=key.x*side,top=key.y*side,gutter=GUTTER/unit;bitmap=render(page,background,index.query(left-gutter,top-gutter,left+side+gutter,top+side+gutter),key);tiles.put(key,bitmap);trim();}paintTile(c,key,bitmap);}}
+        LinkedHashSet<Key> visible=new LinkedHashSet<>();for(long y=y1;y<=y2;y++)for(long x=x1;x<=x2;x++)visible.add(new Key(level,(int)x,(int)y));cancelObsoleteQueued(visible);
+        try{for(Key key:visible){Bitmap bitmap=tiles.get(key);if(bitmap==null){ArrayList<Key> old=background==null?fallback(key,l,t,r,b):null;if(old!=null){float left=key.x*side,top=key.y*side;c.save();c.clipRect(left,top,left+side,top+side);for(Key previous:old)paintTile(c,previous,tiles.get(previous));c.restore();schedule(view,page,index,mutable,key);continue;}if(background==null){drawPaperTile(c,page,key);schedule(view,page,index,mutable,key);continue;}float left=key.x*side,top=key.y*side,gutter=GUTTER/unit;bitmap=render(page,background,index.query(left-gutter,top-gutter,left+side+gutter,top+side+gutter),key);tiles.put(key,bitmap);trim();}paintTile(c,key,bitmap);}}
         catch(OutOfMemoryError error){clear();direct(c,page,background,index,hidden,l,t,r,b,scale);}
     }
 }

@@ -6,6 +6,7 @@ import android.graphics.pdf.*;
 import android.net.Uri;
 import android.os.ParcelFileDescriptor;
 import android.util.AtomicFile;
+import android.util.LruCache;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -14,6 +15,24 @@ import java.util.zip.*;
 import org.json.*;
 
 public final class NotebookStore {
+    private static final int PDF_CACHE_KB=96*1024;
+    private static final int PDF_FORMAT_REVISION=1;
+    private static final long PDF_RASTER_MAX_PIXELS=16_000_000L;
+    private static final Object PDF_FILE_CACHE_LOCK=new Object();
+    private static final LruCache<String,PdfPageRaster> PDF_PAGE_CACHE=new LruCache<String,PdfPageRaster>(PDF_CACHE_KB){
+        @Override protected int sizeOf(String key,PdfPageRaster value){return Math.max(1,value.bitmap.getAllocationByteCount()/1024);}
+    };
+    private static final class PdfPageRaster {
+        final long fingerprintA,fingerprintB;final int width,height;final Bitmap bitmap;
+        PdfPageRaster(long a,long b,int w,int h,Bitmap image){fingerprintA=a;fingerprintB=b;width=w;height=h;bitmap=image;}
+    }
+    private static final class PdfTeeOutputStream extends OutputStream {
+        final OutputStream target,cache;boolean cacheFailed;
+        PdfTeeOutputStream(OutputStream target,OutputStream cache){this.target=target;this.cache=cache;}
+        @Override public void write(int value)throws IOException{target.write(value);if(!cacheFailed)try{cache.write(value);}catch(IOException e){cacheFailed=true;}}
+        @Override public void write(byte[] data,int offset,int length)throws IOException{target.write(data,offset,length);if(!cacheFailed)try{cache.write(data,offset,length);}catch(IOException e){cacheFailed=true;}}
+        @Override public void flush()throws IOException{target.flush();if(!cacheFailed)try{cache.flush();}catch(IOException e){cacheFailed=true;}}
+    }
     final Context context;
     final File root,assets;
     final NotebookNames names;
@@ -85,7 +104,65 @@ public final class NotebookStore {
         }catch(Exception e){for(File f:created)f.delete();throw e;}
     }
     public void exportPdf(Ink.Doc doc,OutputStream out)throws Exception{
-        PdfDocument pdf=new PdfDocument();try{for(int i=0;i<doc.pages.size();i++){Ink.Page p=doc.pages.get(i);float[] bounds=CanvasViewport.exportBounds(p);float width=bounds[2]-bounds[0],height=bounds[3]-bounds[1],scale=p.infinite?600/Math.max(width,height):600/width;int w=p.infinite?Math.max(100,Math.round(width*scale)):600,h=Math.max(100,Math.round(height*scale));PdfDocument.Page page=pdf.startPage(new PdfDocument.PageInfo.Builder(w,h,i+1).create());Canvas c=page.getCanvas();c.drawColor(p.paper);c.translate((w-width*scale)/2,(h-height*scale)/2);c.scale(scale,scale);c.translate(-bounds[0],-bounds[1]);Bitmap image=p.background.isEmpty()?null:bitmap(p.background,2400);InkRenderer.Prepared prepared=new InkRenderer.Prepared();try{if(p.infinite)InkRenderer.region(c,p,image,p.strokes,Collections.emptySet(),bounds[0],bounds[1],bounds[2],bounds[3],scale,prepared);else InkRenderer.page(c,p,image,Collections.emptySet(),prepared);}finally{prepared.clear();if(image!=null)image.recycle();}pdf.finishPage(page);}pdf.writeTo(out);}finally{pdf.close();}
+        synchronized(PDF_FILE_CACHE_LOCK){
+            long[][] fingerprints=new long[doc.pages.size()][];long a=pdfHash(0xcbf29ce484222325L,PDF_FORMAT_REVISION),b=pdfHash(0x84222325cbf29ce4L,doc.pages.size());
+            for(int i=0;i<doc.pages.size();i++){fingerprints[i]=pdfFingerprint(doc.pages.get(i));a=pdfHash(a,i);a=pdfHash(a,(int)fingerprints[i][0]);a=pdfHash(a,(int)(fingerprints[i][0]>>>32));b=pdfHash(b,i);b=pdfHash(b,(int)fingerprints[i][1]);b=pdfHash(b,(int)(fingerprints[i][1]>>>32));}
+            File cache=new File(context.getCacheDir(),"folio-pdf-"+Long.toHexString(a)+"-"+Long.toHexString(b)+".pdf");
+            if(cache.isFile()&&cache.length()>0){copyPdf(cache,out);return;}
+            File temporary=new File(cache.getPath()+".tmp");temporary.delete();FileOutputStream cachedOut;
+            try{cachedOut=new FileOutputStream(temporary);}catch(IOException unavailable){temporary.delete();writePdf(doc,fingerprints,out);return;}
+            PdfTeeOutputStream tee=new PdfTeeOutputStream(out,cachedOut);
+            try{writePdf(doc,fingerprints,tee);tee.flush();}catch(Exception|Error failure){try{cachedOut.close();}catch(IOException ignored){}temporary.delete();throw failure;}
+            try{cachedOut.close();}catch(IOException unavailable){temporary.delete();return;}
+            if(tee.cacheFailed){temporary.delete();return;}
+            cache.delete();if(!temporary.renameTo(cache)){temporary.delete();return;}prunePdfFiles(cache);
+        }
     }
+    private PdfPageRaster pdfRaster(Ink.Page page,long[] fingerprint)throws Exception{
+        String key=page.id;
+        synchronized(PDF_PAGE_CACHE){PdfPageRaster cached=PDF_PAGE_CACHE.get(key);if(cached!=null&&cached.fingerprintA==fingerprint[0]&&cached.fingerprintB==fingerprint[1])return cached;}
+        float[] bounds=CanvasViewport.exportBounds(page);float width=bounds[2]-bounds[0],height=bounds[3]-bounds[1];
+        float scale=page.infinite?600/Math.max(width,height):600/width;int pdfWidth=page.infinite?Math.max(100,Math.round(width*scale)):600,pdfHeight=Math.max(100,Math.round(height*scale));
+        float density=Math.min(2f,(float)Math.sqrt(PDF_RASTER_MAX_PIXELS/Math.max(1d,(double)pdfWidth*pdfHeight)));
+        int rasterWidth=Math.max(1,Math.round(pdfWidth*density)),rasterHeight=Math.max(1,Math.round(pdfHeight*density));
+        Bitmap raster=Bitmap.createBitmap(rasterWidth,rasterHeight,Bitmap.Config.ARGB_8888);Bitmap background=null;InkRenderer.Prepared prepared=new InkRenderer.Prepared();
+        try{
+            Canvas canvas=new Canvas(raster);canvas.drawColor(page.paper);
+            canvas.translate((rasterWidth-width*scale*density)/2,(rasterHeight-height*scale*density)/2);canvas.scale(scale*density,scale*density);canvas.translate(-bounds[0],-bounds[1]);
+            background=page.background.isEmpty()?null:bitmap(page.background,2400);
+            if(page.infinite)InkRenderer.region(canvas,page,background,page.strokes,Collections.emptySet(),bounds[0],bounds[1],bounds[2],bounds[3],scale,prepared);
+            else InkRenderer.page(canvas,page,background,Collections.emptySet(),prepared);
+        }catch(Exception|Error failure){raster.recycle();throw failure;}
+        finally{prepared.clear();if(background!=null)background.recycle();}
+        PdfPageRaster result=new PdfPageRaster(fingerprint[0],fingerprint[1],pdfWidth,pdfHeight,raster);
+        synchronized(PDF_PAGE_CACHE){PDF_PAGE_CACHE.put(key,result);}
+        return result;
+    }
+    private void writePdf(Ink.Doc doc,long[][] fingerprints,OutputStream output)throws Exception{
+        PdfDocument pdf=new PdfDocument();Paint imagePaint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+        try{for(int i=0;i<doc.pages.size();i++){PdfPageRaster raster=pdfRaster(doc.pages.get(i),fingerprints[i]);PdfDocument.Page page=pdf.startPage(new PdfDocument.PageInfo.Builder(raster.width,raster.height,i+1).create());page.getCanvas().drawBitmap(raster.bitmap,null,new Rect(0,0,raster.width,raster.height),imagePaint);pdf.finishPage(page);}pdf.writeTo(output);}finally{pdf.close();}
+    }
+    private static void copyPdf(File source,OutputStream output)throws IOException{try(InputStream input=new FileInputStream(source)){byte[] buffer=new byte[65536];int n;while((n=input.read(buffer))!=-1)output.write(buffer,0,n);}}
+    private void prunePdfFiles(File keep){File[] files=context.getCacheDir().listFiles((dir,name)->name.startsWith("folio-pdf-")&&name.endsWith(".pdf"));if(files!=null)for(File file:files)if(!file.equals(keep))file.delete();}
+    private long[] pdfFingerprint(Ink.Page page)throws IOException{
+        long a=0xcbf29ce484222325L,b=0x84222325cbf29ce4L;
+        a=pdfHash(a,page.id);b=pdfHash(b,page.id);a=pdfHash(a,page.pattern);b=pdfHash(b,page.background);
+        a=pdfHash(a,page.paper);b=pdfHash(b,page.lines);a=pdfHash(a,Float.floatToIntBits(page.width));b=pdfHash(b,Float.floatToIntBits(page.height));
+        a=pdfHash(a,Float.floatToIntBits(page.spacing));b=pdfHash(b,page.infinite?1:0);
+        if(!page.background.isEmpty()){File image=asset(page.background);a=pdfHash(a,image.length());b=pdfHash(b,image.lastModified());}
+        a=pdfHash(a,page.layers.size());b=pdfHash(b,page.strokes.size());
+        for(Ink.Layer layer:page.layers){a=pdfHash(a,layer.id);b=pdfHash(b,layer.visible?1:0);}
+        for(Ink.Stroke stroke:page.strokes){
+            a=pdfHash(a,System.identityHashCode(stroke));b=pdfHash(b,stroke.tool);a=pdfHash(a,stroke.layer);b=pdfHash(b,stroke.text);
+            a=pdfHash(a,stroke.color);b=pdfHash(b,Float.floatToIntBits(stroke.width));a=pdfHash(a,stroke.texture);b=pdfHash(b,stroke.revealed?1:0);
+            int count=stroke.points.size();a=pdfHash(a,count);b=pdfHash(b,stroke.cuts.size());
+            if(count>0){a=pdfHash(a,System.identityHashCode(stroke.points.get(0)));b=pdfHash(b,System.identityHashCode(stroke.points.get(count/2)));a=pdfHash(a,System.identityHashCode(stroke.points.get(count-1)));}
+            if(!stroke.cuts.isEmpty()){a=pdfHash(a,System.identityHashCode(stroke.cuts.get(0)));b=pdfHash(b,System.identityHashCode(stroke.cuts.get(stroke.cuts.size()-1)));}
+        }
+        return new long[]{a,b};
+    }
+    private static long pdfHash(long hash,int value){return (hash^Integer.toUnsignedLong(value))*0x100000001b3L;}
+    private static long pdfHash(long hash,long value){for(int i=0;i<8;i++){hash=(hash^(value&0xffL))*0x100000001b3L;value>>>=8;}return hash;}
+    private static long pdfHash(long hash,String value){if(value==null)return pdfHash(hash,0);for(int i=0;i<value.length();i++)hash=pdfHash(hash,value.charAt(i));return pdfHash(hash,value.length());}
     public void exportPng(Ink.Page p,OutputStream out)throws Exception{float[] bounds=CanvasViewport.exportBounds(p);float width=bounds[2]-bounds[0],height=bounds[3]-bounds[1],scale=Math.min(1.5f,2400f/Math.max(width,height));Bitmap image=Bitmap.createBitmap(Math.max(1,(int)Math.ceil(width*scale)),Math.max(1,(int)Math.ceil(height*scale)),Bitmap.Config.ARGB_8888);Bitmap bg=null;InkRenderer.Prepared prepared=new InkRenderer.Prepared();try{Canvas c=new Canvas(image);c.drawColor(p.paper);c.scale(scale,scale);c.translate(-bounds[0],-bounds[1]);bg=p.background.isEmpty()?null:bitmap(p.background,2400);if(p.infinite)InkRenderer.region(c,p,bg,p.strokes,Collections.emptySet(),bounds[0],bounds[1],bounds[2],bounds[3],scale,prepared);else InkRenderer.page(c,p,bg,Collections.emptySet(),prepared);if(!image.compress(Bitmap.CompressFormat.PNG,100,out))throw new IOException("Ошибка PNG");}finally{prepared.clear();if(bg!=null)bg.recycle();image.recycle();}}
 }
