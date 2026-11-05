@@ -139,7 +139,7 @@ final class ChatGPTAuth {
                 if(part.length<2||!part[0].equals("GET")){respond(socket,400,"Неверный запрос");continue;}
                 Uri uri=Uri.parse("http://127.0.0.1"+part[1]);
                 if(!"/auth/callback".equals(uri.getPath())){respond(socket,404,"Путь не найден");continue;}
-                CallbackData result=new CallbackData();result.state=uri.getQueryParameter("state");result.error=uri.getQueryParameter("error");result.code=uri.getQueryParameter("code");result.clientId=uri.getQueryParameter("client_id");result.scope=uri.getQueryParameter("scope");
+                CallbackData result=new CallbackData();result.state=queryValue(uri,"state");result.error=queryValue(uri,"error");result.code=queryValue(uri,"code");result.clientId=queryValue(uri,"client_id");result.scope=queryValue(uri,"scope");
                 if(!constantEquals(expectedState,result.state)){respond(socket,400,"Проверка входа не пройдена. Вернитесь в Folio и повторите попытку.");throw new IOException("Проверка OAuth state не пройдена.");}
                 if(!result.error.isEmpty()){respond(socket,200,"Вход отменён. Можно вернуться в Folio.");throw new IOException(result.error.equals("access_denied")?"Доступ к плану ChatGPT не подтверждён.":"Вход в ChatGPT завершился ошибкой: "+result.error);}
                 if(result.code==null||result.code.isEmpty()){respond(socket,400,"В ответе нет кода авторизации.");throw new IOException("OpenAI не вернул код авторизации.");}
@@ -148,6 +148,8 @@ final class ChatGPTAuth {
         }
         throw new SocketTimeoutException("Ожидание подтверждения входа истекло. Повторите подключение в Folio.");
     }
+
+    private static String queryValue(Uri uri,String key){String value=uri.getQueryParameter(key);return value==null?"":value;}
 
     private static void respond(Socket socket,int status,String message)throws IOException{
         String returnLink="folio://chatgpt-auth/return";
@@ -185,7 +187,7 @@ final class ChatGPTAuth {
         return requestJson(url,"POST",data.toString(),null);
     }
     private static JSONObject requestJson(String address,String method,String body,String bearer)throws Exception{
-        HttpURLConnection con=(HttpURLConnection)new URL(address).openConnection();con.setRequestMethod(method);con.setConnectTimeout(25000);con.setReadTimeout(45000);con.setUseCaches(false);con.setRequestProperty("Accept","application/json");con.setRequestProperty("User-Agent","Folio/1.23.0-preview.7 (Android)");
+        HttpURLConnection con=(HttpURLConnection)new URL(address).openConnection();con.setRequestMethod(method);con.setConnectTimeout(25000);con.setReadTimeout(45000);con.setUseCaches(false);con.setRequestProperty("Accept","application/json");con.setRequestProperty("User-Agent","Folio/1.23.0-preview.8 (Android)");
         if(bearer!=null)con.setRequestProperty("Authorization","Bearer "+bearer);
         if(body!=null){byte[] bytes=body.getBytes(StandardCharsets.UTF_8);con.setDoOutput(true);con.setRequestProperty("Content-Type","application/x-www-form-urlencoded; charset=utf-8");con.setFixedLengthStreamingMode(bytes.length);try(OutputStream out=con.getOutputStream()){out.write(bytes);}}
         int status=con.getResponseCode();InputStream stream=status>=200&&status<300?con.getInputStream():con.getErrorStream();String response=readUtf8(stream,2*1024*1024);con.disconnect();
