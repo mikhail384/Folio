@@ -59,6 +59,7 @@ public final class Icons extends View {
             case "check":path(c,p,4,12,9,18,21,5);break;
             case "focus":path(c,p,3,9,3,3,9,3);path(c,p,15,3,21,3,21,9);path(c,p,21,15,21,21,15,21);path(c,p,9,21,3,21,3,15);break;
             case "star":path(c,p,12,2,15,9,23,10,17,15,19,23,12,19,5,23,7,15,1,10,9,9,12,2);break;
+            case "chatgpt":{c.drawRoundRect(new RectF(2,3,22,17),4,4,p);path(c,p,7,17,6,21,12,17);Path spark=new Path();spark.moveTo(15,5);spark.lineTo(16.3f,8.1f);spark.lineTo(20,9);spark.lineTo(16.3f,10.1f);spark.lineTo(15,13);spark.lineTo(13.7f,10.1f);spark.lineTo(10,9);spark.lineTo(13.7f,8.1f);spark.close();c.drawPath(spark,p);break;}
             default:c.drawCircle(12,12,9,p);line(c,p,12,7,12,13);c.drawPoint(12,17,p);
         }c.restore();
     }

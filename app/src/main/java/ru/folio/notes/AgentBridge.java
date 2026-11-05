@@ -108,6 +108,9 @@ final class AgentBridge {
     }
     void show(){
         LinearLayout box=a.column();Studio.addCard(a,box,Studio.row(a,"pen","ChatGPT / Codex","Чтение открытого холста, рукописные записи и рисунки",null));
+        final Studio.Sheet[] agentSheet=new Studio.Sheet[1];
+        box.addView(a.pill("Написать в ChatGPT",true,()->{if(agentSheet[0]!=null)agentSheet[0].dismissThen(()->ChatGPTShare.compose(a));else ChatGPTShare.compose(a);}));
+        TextView shareInfo=a.text("Вопрос можно отправить вместе со снимком открытой страницы. Ответ откроется в ChatGPT.",12,Studio.MUTED,false);shareInfo.setLineSpacing(a.dp(3),1);LinearLayout.LayoutParams shareInfoParams=new LinearLayout.LayoutParams(-1,-2);shareInfoParams.topMargin=a.dp(8);box.addView(shareInfo,shareInfoParams);
         LinearLayout row=Studio.row(a,"cloud","Доступ к холсту","Для разных сетей подключите облако. VPN можно оставить включённым. Доступ действует, пока Folio открыт.",null);
         TextView info=a.text(displayStatus()+"\n"+url(),14,Studio.MUTED,false);info.setTextIsSelectable(true);
         Studio.Toggle toggle=new Studio.Toggle(a,enabled(),on->{a.prefs.edit().putBoolean("agent_enabled",on).apply();if(on)resume();else pause();info.setText(displayStatus()+"\n"+url());});row.addView(toggle,new LinearLayout.LayoutParams(a.dp(50),a.dp(48)));Studio.addCard(a,box,row);a.pad(info,0,16);box.addView(info);
@@ -117,6 +120,6 @@ final class AgentBridge {
         box.addView(a.pill("Скопировать подключение для ПК",false,()->{try{String config=cloud.configured()?cloud.profile().toString():new JSONObject().put("url",url()).put("token",token()).toString();((ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Folio connection",config));a.toast("Вставьте подключение в настройку плагина на ПК");}catch(Exception ignored){}}));
         box.addView(a.pill("Новый ключ подключения",false,()->{if(cloud.configured()){a.startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse(url())));return;}pause();a.prefs.edit().remove("agent_token").apply();token();if(enabled())resume();info.setText(displayStatus()+"\n"+url());a.toast("Старое подключение отключено");}));
         TextView help=a.text("Облачное подключение работает по HTTPS из разных сетей. Общая Wi-Fi сеть и отключение VPN не нужны.\n\nВ плагине сначала прочитайте холст, затем задайте место и текст. Мои записи состоят из обычных штрихов Folio и отменяются отдельной командой.\n\nДля личного почерка напишите букву или слово, выделите лассо и попросите плагин запомнить образец.",13,Studio.MUTED,false);a.pad(help,0,16);box.addView(help);
-        new Studio.Builder(a).setTitle("Folio × ИИ").setView(box).setPositiveButton("Готово",null).show();
+        agentSheet[0]=new Studio.Builder(a).setTitle("Folio × ИИ").setView(box).setPositiveButton("Готово",null).create();agentSheet[0].show();
     }
 }
