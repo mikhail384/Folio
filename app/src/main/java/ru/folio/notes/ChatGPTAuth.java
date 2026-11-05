@@ -29,7 +29,7 @@ final class ChatGPTAuth {
     private static final String RESOURCE="https://api.openai.com/v1";
     private static final String PREFS="folio_chatgpt_siwc";
     private static final String ACCOUNT="account_v1";
-    private static final String CLIENT_ID="client_id_v1";
+    private static final String ACCOUNTS="accounts_v1";
     private static final String HOST="host_id";
     private static final String KEY_ALIAS="folio.chatgpt.siwc.credentials.v1";
     private static final String REQUIRED_SCOPE="chatgpt.tokens.use.direct";
@@ -59,6 +59,19 @@ final class ChatGPTAuth {
         try{return new Account(new JSONObject(unseal(context,sealed)));}catch(Exception invalid){return null;}
     }
 
+    static List<Account> accounts(Context context){
+        android.content.SharedPreferences prefs=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE);ArrayList<Account> out=new ArrayList<>();String sealed=prefs.getString(ACCOUNTS,"");
+        if(!sealed.isEmpty())try{JSONArray rows=new JSONArray(unseal(context,sealed));for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row!=null)addAccount(out,new Account(row));}}catch(Exception ignored){}
+        Account active=account(context);if(active!=null)addAccount(out,active);return out;
+    }
+
+    static boolean activateAccount(Context context,String subject,String clientId){
+        for(Account saved:accounts(context))if(saved.subject().equals(subject)&&saved.clientId().equals(clientId))try{return context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putString(ACCOUNT,seal(context,saved.data.toString())).commit();}catch(Exception ignored){return false;}
+        return false;
+    }
+
+    private static void addAccount(List<Account> accounts,Account candidate){for(Account existing:accounts)if(existing.subject().equals(candidate.subject())&&existing.clientId().equals(candidate.clientId()))return;accounts.add(candidate);}
+
     static void signIn(MainActivity activity,LoginCallback callback){
         signIn(activity,false,callback);
     }
@@ -75,7 +88,7 @@ final class ChatGPTAuth {
                 String issuer=metadata.getString("issuer");
                 String jwksUri=metadata.getString("jwks_uri");
                 Account old=account(activity);
-                String client=old!=null&&!old.clientId().isEmpty()?old.clientId():activity.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getString(CLIENT_ID,"dynamic_agent_client");
+                String client=!selectDifferentAccount&&old!=null&&!old.clientId().isEmpty()?old.clientId():"dynamic_agent_client";
                 String state=randomToken(32),nonce=randomToken(32),verifier=randomToken(48);
                 String challenge=b64(MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII)));
                 server=new ServerSocket();server.setReuseAddress(true);server.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"),0));server.setSoTimeout(900000);
@@ -91,7 +104,7 @@ final class ChatGPTAuth {
                     .appendQueryParameter("code_challenge_method","S256")
                     .appendQueryParameter("code_challenge",challenge)
                     .appendQueryParameter("ext_agent_host_id",hostId(activity));
-                if(old==null||old.clientId().isEmpty())url.appendQueryParameter("agent_name_hint","Folio");
+                if(selectDifferentAccount||old==null||old.clientId().isEmpty())url.appendQueryParameter("agent_name_hint","Folio");
                 if(!selectDifferentAccount&&old!=null&&!old.idToken().isEmpty())url.appendQueryParameter("id_token_hint",old.idToken());
                 if(!selectDifferentAccount&&old!=null&&!old.email().isEmpty())url.appendQueryParameter("login_hint",old.email());
                 if(selectDifferentAccount)url.appendQueryParameter("prompt","select_account");
@@ -104,7 +117,7 @@ final class ChatGPTAuth {
                 CallbackData callbackData=readCallback(callbackServer,state);
                 if(launchError.get()!=null)throw new IOException("Не удалось открыть защищённый вход в браузере",launchError.get());
                 String issued=callbackData.clientId;
-                if(old==null||old.clientId().isEmpty()){
+                if(selectDifferentAccount||old==null||old.clientId().isEmpty()){
                     if(issued.isEmpty()||issued.equals("dynamic_agent_client"))throw new IOException("OpenAI не вернул зарегистрированный client_id. Повторите подключение позже.");
                     client=issued;
                 }else if(!issued.isEmpty()&&!issued.equals(client))throw new IOException("Ответ авторизации относится к другой регистрации. Повторите вход.");
@@ -113,13 +126,14 @@ final class ChatGPTAuth {
                 String idToken=tokens.optString("id_token","");
                 if(idToken.isEmpty())throw new IOException("Ответ входа не содержит подтверждённую учётную запись.");
                 JSONObject claims=verifyIdToken(idToken,client,nonce,issuer,jwksUri);
+                boolean sameRegistration=old!=null&&old.subject().equals(claims.getString("sub"))&&old.clientId().equals(client);
                 String scopes=tokens.optString("scope",callbackData.scope);
-                if(scopes.isEmpty()&&old!=null)scopes=old.scope();
+                if(scopes.isEmpty()&&sameRegistration)scopes=old.scope();
                 JSONObject saved=new JSONObject();
                 saved.put("client_id",client).put("host_id",hostId(activity)).put("issuer",issuer)
                     .put("subject",claims.getString("sub")).put("email",claims.optString("email",""))
                     .put("id_token",idToken).put("access_token",tokens.optString("access_token",""))
-                    .put("refresh_token",tokens.optString("refresh_token",old==null?"":old.data.optString("refresh_token","")))
+                    .put("refresh_token",tokens.optString("refresh_token",sameRegistration?old.data.optString("refresh_token",""):""))
                     .put("scope",scopes).put("expires_at",System.currentTimeMillis()+Math.max(1,tokens.optLong("expires_in",3600))*1000L);
                 save(activity,saved);
                 Account result=new Account(saved);
@@ -193,7 +207,7 @@ final class ChatGPTAuth {
         return requestJson(url,"POST",data.toString(),null);
     }
     private static JSONObject requestJson(String address,String method,String body,String bearer)throws Exception{
-        HttpURLConnection con=(HttpURLConnection)new URL(address).openConnection();con.setRequestMethod(method);con.setConnectTimeout(25000);con.setReadTimeout(45000);con.setUseCaches(false);con.setRequestProperty("Accept","application/json");con.setRequestProperty("User-Agent","Folio/1.23.0-preview.9 (Android)");
+        HttpURLConnection con=(HttpURLConnection)new URL(address).openConnection();con.setRequestMethod(method);con.setConnectTimeout(25000);con.setReadTimeout(45000);con.setUseCaches(false);con.setRequestProperty("Accept","application/json");con.setRequestProperty("User-Agent","Folio/1.23.0-preview.10 (Android)");
         if(bearer!=null)con.setRequestProperty("Authorization","Bearer "+bearer);
         if(body!=null){byte[] bytes=body.getBytes(StandardCharsets.UTF_8);con.setDoOutput(true);con.setRequestProperty("Content-Type","application/x-www-form-urlencoded; charset=utf-8");con.setFixedLengthStreamingMode(bytes.length);try(OutputStream out=con.getOutputStream()){out.write(bytes);}}
         int status=con.getResponseCode();InputStream stream=status>=200&&status<300?con.getInputStream():con.getErrorStream();String response=readUtf8(stream,2*1024*1024);con.disconnect();
@@ -243,7 +257,12 @@ final class ChatGPTAuth {
     private static String hostId(Context context){
         android.content.SharedPreferences prefs=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE);String id=prefs.getString(HOST,"");if(id.isEmpty()){id="urn:uuid:"+UUID.randomUUID();prefs.edit().putString(HOST,id).apply();}return id;
     }
-    private static void save(Context context,JSONObject account)throws Exception{android.content.SharedPreferences.Editor editor=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putString(ACCOUNT,seal(context,account.toString()));String client=account.optString("client_id","");if(!client.isEmpty())editor.putString(CLIENT_ID,client);editor.commit();}
+    private static void save(Context context,JSONObject account)throws Exception{
+        ArrayList<Account> profiles=new ArrayList<>(accounts(context));Account current=new Account(account);ArrayList<JSONObject> rows=new ArrayList<>();boolean replaced=false;
+        for(Account profile:profiles){if(profile.subject().equals(current.subject())&&profile.clientId().equals(current.clientId())){if(!replaced){rows.add(account);replaced=true;}}else rows.add(profile.data);}
+        if(!replaced)rows.add(account);JSONArray packed=new JSONArray();for(JSONObject row:rows)packed.put(row);
+        context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putString(ACCOUNTS,seal(context,packed.toString())).putString(ACCOUNT,seal(context,account.toString())).commit();
+    }
     private static String seal(Context context,String plain)throws Exception{
         Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.ENCRYPT_MODE,key());byte[] encrypted=cipher.doFinal(plain.getBytes(StandardCharsets.UTF_8));byte[] iv=cipher.getIV();byte[] packed=new byte[iv.length+encrypted.length];System.arraycopy(iv,0,packed,0,iv.length);System.arraycopy(encrypted,0,packed,iv.length,encrypted.length);return Base64.encodeToString(packed,Base64.NO_WRAP|Base64.URL_SAFE|Base64.NO_PADDING);
     }

@@ -72,7 +72,7 @@ final class ChatGPTStudio {
             accountState=a.text("Проверяем подключение…",11,Studio.MUTED,false);accountState.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);account.addView(accountState);
             root.addView(account);
 
-            switchAccountButton=Studio.button(a,"Сменить аккаунт",false,this::switchAccount);switchAccountButton.setTextSize(10);switchAccountButton.setVisibility(View.GONE);LinearLayout.LayoutParams switchLp=new LinearLayout.LayoutParams(-2,-2);switchLp.topMargin=a.dp(4);root.addView(switchAccountButton,switchLp);
+            switchAccountButton=Studio.button(a,"Аккаунты ChatGPT",false,this::switchAccount);switchAccountButton.setTextSize(10);switchAccountButton.setVisibility(View.GONE);LinearLayout.LayoutParams switchLp=new LinearLayout.LayoutParams(-2,-2);switchLp.topMargin=a.dp(4);root.addView(switchAccountButton,switchLp);
 
             LinearLayout mode=a.row();mode.setGravity(Gravity.CENTER_VERTICAL);a.pad(mode,12,9);mode.setBackground(Studio.surface(Studio.CARD,16,a.getResources().getDisplayMetrics().density));
             LinearLayout modeText=a.column();modeText.addView(a.text("Писать ответы на холст",13,Studio.TEXT,true));TextView modeHint=a.text("Выкл. — ответ в окне · вкл. — на странице",10,Studio.MUTED,false);LinearLayout.LayoutParams mh=new LinearLayout.LayoutParams(-1,-2);mh.topMargin=a.dp(3);modeText.addView(modeHint,mh);mode.addView(modeText,new LinearLayout.LayoutParams(0,-2,1));
@@ -135,7 +135,17 @@ final class ChatGPTStudio {
         void chooseModel(){if(models.isEmpty()){loadConnection();return;}CharSequence[] names=new CharSequence[models.size()];for(int i=0;i<models.size();i++)names[i]=models.get(i).name+" · "+models.get(i).slug;new Studio.Builder(a).setTitle("Модель ChatGPT").setItems(names,(dialog,index)->{selectedModel=models.get(index).slug;a.prefs.edit().putString("chatgpt_model",selectedModel).apply();refreshModelLabel();}).width(420).show();}
 
         void connect(){beginSignIn(false);}
-        void switchAccount(){beginSignIn(true);}
+        void switchAccount(){
+            List<ChatGPTAuth.Account> saved=ChatGPTAuth.accounts(a);ChatGPTAuth.Account active=ChatGPTAuth.account(a);CharSequence[] choices=new CharSequence[saved.size()+1];
+            for(int i=0;i<saved.size();i++){ChatGPTAuth.Account item=saved.get(i);String label=item.email().isEmpty()?"Аккаунт "+(i+1):item.email();if(item.subject().equals(active==null?"":active.subject())&&item.clientId().equals(active==null?"":active.clientId()))label+=" · активен";else if(saved.size()>1&&label.equals(saved.get(0).email()))label+=" · регистрация "+(i+1);choices[i]=label;}
+            choices[saved.size()]="Добавить аккаунт…";
+            new Studio.Builder(a).setTitle("Аккаунты ChatGPT").setItems(choices,(dialog,index)->{
+                if(index==saved.size()){beginSignIn(true);return;}
+                ChatGPTAuth.Account picked=saved.get(index);if(active!=null&&picked.subject().equals(active.subject())&&picked.clientId().equals(active.clientId()))return;
+                if(!ChatGPTAuth.activateAccount(a,picked.subject(),picked.clientId())){connectionHint.setText("Не удалось переключить сохранённый аккаунт.");return;}
+                models.clear();selectedModel="";a.prefs.edit().remove("chatgpt_model").apply();loadConnection();a.toast("Аккаунт ChatGPT переключён");
+            }).width(420).show();
+        }
         void beginSignIn(boolean selectDifferentAccount){
             accountState.setText(selectDifferentAccount?"Выбираем аккаунт…":"Ожидаем подтверждения входа…");
             connectionHint.setText(selectDifferentAccount?"Выберите другой аккаунт в браузере. Текущий вход сохранится, если вы отмените переключение.":"Подтвердите вход в браузере — после этого Folio откроется автоматически.");
