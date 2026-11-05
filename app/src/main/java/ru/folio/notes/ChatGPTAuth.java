@@ -29,6 +29,7 @@ final class ChatGPTAuth {
     private static final String RESOURCE="https://api.openai.com/v1";
     private static final String PREFS="folio_chatgpt_siwc";
     private static final String ACCOUNT="account_v1";
+    private static final String CLIENT_ID="client_id_v1";
     private static final String HOST="host_id";
     private static final String KEY_ALIAS="folio.chatgpt.siwc.credentials.v1";
     private static final String REQUIRED_SCOPE="chatgpt.tokens.use.direct";
@@ -59,6 +60,10 @@ final class ChatGPTAuth {
     }
 
     static void signIn(MainActivity activity,LoginCallback callback){
+        signIn(activity,false,callback);
+    }
+
+    static void signIn(MainActivity activity,boolean selectDifferentAccount,LoginCallback callback){
         try{Intent keepAlive=new Intent(activity,ChatGPTAuthService.class);if(Build.VERSION.SDK_INT>=26)activity.startForegroundService(keepAlive);else activity.startService(keepAlive);}
         catch(RuntimeException unavailable){callback.done(null,new IOException("Android не смог оставить вход Folio активным во время переключения в браузер. Повторите вход.",unavailable));return;}
         Thread worker=new Thread(()->{
@@ -70,7 +75,7 @@ final class ChatGPTAuth {
                 String issuer=metadata.getString("issuer");
                 String jwksUri=metadata.getString("jwks_uri");
                 Account old=account(activity);
-                String client=old==null||old.clientId().isEmpty()?"dynamic_agent_client":old.clientId();
+                String client=old!=null&&!old.clientId().isEmpty()?old.clientId():activity.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getString(CLIENT_ID,"dynamic_agent_client");
                 String state=randomToken(32),nonce=randomToken(32),verifier=randomToken(48);
                 String challenge=b64(MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII)));
                 server=new ServerSocket();server.setReuseAddress(true);server.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"),0));server.setSoTimeout(900000);
@@ -87,9 +92,10 @@ final class ChatGPTAuth {
                     .appendQueryParameter("code_challenge",challenge)
                     .appendQueryParameter("ext_agent_host_id",hostId(activity));
                 if(old==null||old.clientId().isEmpty())url.appendQueryParameter("agent_name_hint","Folio");
-                if(old!=null&&!old.idToken().isEmpty())url.appendQueryParameter("id_token_hint",old.idToken());
-                if(old!=null&&!old.email().isEmpty())url.appendQueryParameter("login_hint",old.email());
-                if(old!=null&&!old.canUsePlan())url.appendQueryParameter("prompt","consent");
+                if(!selectDifferentAccount&&old!=null&&!old.idToken().isEmpty())url.appendQueryParameter("id_token_hint",old.idToken());
+                if(!selectDifferentAccount&&old!=null&&!old.email().isEmpty())url.appendQueryParameter("login_hint",old.email());
+                if(selectDifferentAccount)url.appendQueryParameter("prompt","select_account");
+                else if(old!=null&&!old.canUsePlan())url.appendQueryParameter("prompt","consent");
                 Uri authorizeUri=url.build();final ServerSocket callbackServer=server;
                 activity.ui.post(()->{
                     try{if(activity.isFinishing()||activity.isDestroyed())throw new IllegalStateException("Folio уже закрыт");activity.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,authorizeUri));}
@@ -187,7 +193,7 @@ final class ChatGPTAuth {
         return requestJson(url,"POST",data.toString(),null);
     }
     private static JSONObject requestJson(String address,String method,String body,String bearer)throws Exception{
-        HttpURLConnection con=(HttpURLConnection)new URL(address).openConnection();con.setRequestMethod(method);con.setConnectTimeout(25000);con.setReadTimeout(45000);con.setUseCaches(false);con.setRequestProperty("Accept","application/json");con.setRequestProperty("User-Agent","Folio/1.23.0-preview.8 (Android)");
+        HttpURLConnection con=(HttpURLConnection)new URL(address).openConnection();con.setRequestMethod(method);con.setConnectTimeout(25000);con.setReadTimeout(45000);con.setUseCaches(false);con.setRequestProperty("Accept","application/json");con.setRequestProperty("User-Agent","Folio/1.23.0-preview.9 (Android)");
         if(bearer!=null)con.setRequestProperty("Authorization","Bearer "+bearer);
         if(body!=null){byte[] bytes=body.getBytes(StandardCharsets.UTF_8);con.setDoOutput(true);con.setRequestProperty("Content-Type","application/x-www-form-urlencoded; charset=utf-8");con.setFixedLengthStreamingMode(bytes.length);try(OutputStream out=con.getOutputStream()){out.write(bytes);}}
         int status=con.getResponseCode();InputStream stream=status>=200&&status<300?con.getInputStream():con.getErrorStream();String response=readUtf8(stream,2*1024*1024);con.disconnect();
@@ -237,7 +243,7 @@ final class ChatGPTAuth {
     private static String hostId(Context context){
         android.content.SharedPreferences prefs=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE);String id=prefs.getString(HOST,"");if(id.isEmpty()){id="urn:uuid:"+UUID.randomUUID();prefs.edit().putString(HOST,id).apply();}return id;
     }
-    private static void save(Context context,JSONObject account)throws Exception{context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putString(ACCOUNT,seal(context,account.toString())).commit();}
+    private static void save(Context context,JSONObject account)throws Exception{android.content.SharedPreferences.Editor editor=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putString(ACCOUNT,seal(context,account.toString()));String client=account.optString("client_id","");if(!client.isEmpty())editor.putString(CLIENT_ID,client);editor.commit();}
     private static String seal(Context context,String plain)throws Exception{
         Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.ENCRYPT_MODE,key());byte[] encrypted=cipher.doFinal(plain.getBytes(StandardCharsets.UTF_8));byte[] iv=cipher.getIV();byte[] packed=new byte[iv.length+encrypted.length];System.arraycopy(iv,0,packed,0,iv.length);System.arraycopy(encrypted,0,packed,iv.length,encrypted.length);return Base64.encodeToString(packed,Base64.NO_WRAP|Base64.URL_SAFE|Base64.NO_PADDING);
     }

@@ -47,7 +47,7 @@ final class ChatGPTStudio {
         final MainActivity a;
         final LinearLayout root,transcript;
         final ScrollView transcriptScroll;
-        final TextView accountState,modelButton,connectionHint;
+        final TextView accountState,modelButton,connectionHint,switchAccountButton;
         final EditText input;
         final CheckBox attachCanvas;
         final Studio.Toggle writeOnCanvas;
@@ -71,6 +71,8 @@ final class ChatGPTStudio {
             TextView plan=a.text("ПЛАН CHATGPT",10,Studio.ACCENT,true);plan.setLetterSpacing(.08f);account.addView(plan,new LinearLayout.LayoutParams(0,-2,1));
             accountState=a.text("Проверяем подключение…",11,Studio.MUTED,false);accountState.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);account.addView(accountState);
             root.addView(account);
+
+            switchAccountButton=Studio.button(a,"Сменить аккаунт",false,this::switchAccount);switchAccountButton.setTextSize(10);switchAccountButton.setVisibility(View.GONE);LinearLayout.LayoutParams switchLp=new LinearLayout.LayoutParams(-2,-2);switchLp.topMargin=a.dp(4);root.addView(switchAccountButton,switchLp);
 
             LinearLayout mode=a.row();mode.setGravity(Gravity.CENTER_VERTICAL);a.pad(mode,12,9);mode.setBackground(Studio.surface(Studio.CARD,16,a.getResources().getDisplayMetrics().density));
             LinearLayout modeText=a.column();modeText.addView(a.text("Писать ответы на холст",13,Studio.TEXT,true));TextView modeHint=a.text("Выкл. — ответ в окне · вкл. — на странице",10,Studio.MUTED,false);LinearLayout.LayoutParams mh=new LinearLayout.LayoutParams(-1,-2);mh.topMargin=a.dp(3);modeText.addView(modeHint,mh);mode.addView(modeText,new LinearLayout.LayoutParams(0,-2,1));
@@ -115,6 +117,7 @@ final class ChatGPTStudio {
 
         void loadConnection(){
             ChatGPTAuth.Account saved=ChatGPTAuth.account(a);
+            switchAccountButton.setVisibility(saved==null?View.GONE:View.VISIBLE);
             if(saved==null){accountState.setText("Не подключено");modelButton.setText("Доступные модели появятся после входа");return;}
             if(!HISTORY_SUBJECT.isEmpty()&&!HISTORY_SUBJECT.equals(saved.subject())){HISTORY.clear();transcript.removeAllViews();addBubble("assistant","Начните новый диалог для этой учётной записи.",null);}
             HISTORY_SUBJECT=saved.subject();
@@ -131,11 +134,16 @@ final class ChatGPTStudio {
         void refreshModelLabel(){for(ChatGPTAuth.Model model:models)if(model.slug.equals(selectedModel)){modelButton.setText("Модель · "+model.name+"  ▾");return;}modelButton.setText("Выбрать модель  ▾");}
         void chooseModel(){if(models.isEmpty()){loadConnection();return;}CharSequence[] names=new CharSequence[models.size()];for(int i=0;i<models.size();i++)names[i]=models.get(i).name+" · "+models.get(i).slug;new Studio.Builder(a).setTitle("Модель ChatGPT").setItems(names,(dialog,index)->{selectedModel=models.get(index).slug;a.prefs.edit().putString("chatgpt_model",selectedModel).apply();refreshModelLabel();}).width(420).show();}
 
-        void connect(){
-            accountState.setText("Ожидаем подтверждения входа…");connectionHint.setText("Подтвердите вход в браузере — после этого Folio откроется автоматически.");
-            ChatGPTAuth.signIn(a,(account,error)->{
-                if(error!=null){accountState.setText("Не подключено");connectionHint.setText(error.getMessage()==null?"Не удалось подключить ChatGPT.":error.getMessage());a.toast("Не удалось подключить ChatGPT");return;}
-                accountState.setText(account.email().isEmpty()?"Подключено":"Подключено · "+account.email());connectionHint.setText("Вход защищённо сохранён на этом устройстве.");models.clear();loadConnection();a.toast("ChatGPT подключён к Folio");
+        void connect(){beginSignIn(false);}
+        void switchAccount(){beginSignIn(true);}
+        void beginSignIn(boolean selectDifferentAccount){
+            accountState.setText(selectDifferentAccount?"Выбираем аккаунт…":"Ожидаем подтверждения входа…");
+            connectionHint.setText(selectDifferentAccount?"Выберите другой аккаунт в браузере. Текущий вход сохранится, если вы отмените переключение.":"Подтвердите вход в браузере — после этого Folio откроется автоматически.");
+            ChatGPTAuth.signIn(a,selectDifferentAccount,(account,error)->{
+                if(error!=null){ChatGPTAuth.Account current=ChatGPTAuth.account(a);accountState.setText(current==null?"Не подключено":current.email().isEmpty()?"Подключено":"Подключено · "+current.email());connectionHint.setText(error.getMessage()==null?"Не удалось подключить ChatGPT.":error.getMessage());switchAccountButton.setVisibility(current==null?View.GONE:View.VISIBLE);a.toast("Не удалось подключить ChatGPT");return;}
+                accountState.setText(account.email().isEmpty()?"Подключено":"Подключено · "+account.email());connectionHint.setText("Вход защищённо сохранён на этом устройстве.");models.clear();
+                if(selectDifferentAccount){selectedModel="";a.prefs.edit().remove("chatgpt_model").apply();}
+                loadConnection();a.toast(selectDifferentAccount?"Аккаунт ChatGPT изменён":"ChatGPT подключён к Folio");
             });
         }
 
