@@ -130,7 +130,7 @@ def _letter_weight(character):
     return 1.0
 
 def _round_path(path):
-    """Replace sharp sampled vertices with short quadratic curves, keeping endpoints."""
+    """Replace sharp sampled vertices with rounded quadratic turns, keeping endpoints."""
     if len(path)<3:return path
     result=[path[0]]
     for index in range(1,len(path)-1):
@@ -142,9 +142,9 @@ def _round_path(path):
             result.append(current);continue
         ux1,uy1=dx1/length1,dy1/length1;ux2,uy2=dx2/length2,dy2/length2
         direction=max(-1,min(1,ux1*ux2+uy1*uy2))
-        if direction>.88:
+        if direction>.95:
             result.append(current);continue
-        cut=min(length1,length2)*.22
+        cut=min(length1,length2)*.34
         entry=[current[0]-ux1*cut,current[1]-uy1*cut,current[2]+(before[2]-current[2])*(cut/length1)]
         exit=[current[0]+ux2*cut,current[1]+uy2*cut,current[2]+(after[2]-current[2])*(cut/length2)]
         result.append(entry)
@@ -152,6 +152,30 @@ def _round_path(path):
             inv=1-step
             result.append([inv*inv*entry[axis]+2*inv*step*current[axis]+step*step*exit[axis] for axis in range(3)])
     result.append(path[-1])
+    return result
+
+def _soften_dense_path(path,radius=.055):
+    """Filter tiny sampling kinks over a glyph-relative arc length."""
+    if len(path)<4:return path
+    distances=[0.0]
+    for before,after in zip(path,path[1:]):
+        distances.append(distances[-1]+math.hypot(after[0]-before[0],after[1]-before[1]))
+    if distances[-1]<radius*1.5:return path
+    result=[];left=right=0
+    for index,center in enumerate(distances):
+        if index==0 or index==len(path)-1:
+            result.append(path[index]);continue
+        lower=center-radius;upper=center+radius
+        while left<len(path)-1 and distances[left]<lower:left+=1
+        right=max(right,index)
+        while right<len(path)-1 and distances[right+1]<=upper:right+=1
+        sums=[0.0,0.0,0.0];total=0.0
+        for point_index in range(left,right+1):
+            weight=max(0.0,1-abs(distances[point_index]-center)/radius)
+            point=path[point_index]
+            for axis in range(3):sums[axis]+=point[axis]*weight
+            total+=weight
+        result.append([value/total for value in sums] if total else path[index])
     return result
 
 def _personal_variation(glyph,token,seed,offset,baseline_fraction):
@@ -246,7 +270,7 @@ def layout(text,x,y,height=28,width=2.2,color='#28344b',max_width=900,samples=No
         if samples is not None:
             variation,advance_scale=varied if varied is not None else (None,1)
         for path in glyph['paths']:
-            render_path=_round_path(path) if samples is not None else path
+            render_path=_round_path(_soften_dense_path(path)) if samples is not None else path
             if len(result)>=2000 or sum(len(s['points']) for s in result)+len(render_path)>100000:raise ValueError('Надпись слишком большая; разделите её на части')
             points=[]
             for p in render_path:

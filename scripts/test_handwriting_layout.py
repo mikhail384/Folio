@@ -44,6 +44,18 @@ class HandwritingLayoutTests(unittest.TestCase):
         self.assertNotIn([1,0,.7],rounded)
         self.assertTrue(all(.5<=point[2]<=.9 for point in rounded))
 
+    def test_dense_descender_turn_is_softened_over_a_glyph_relative_radius(self):
+        path=[[i*.025,0,.8] for i in range(13)]+[[.3,i*.025,.8] for i in range(1,13)]
+        softened=HANDWRITING._soften_dense_path(path)
+        self.assertEqual(softened[0],path[0])
+        self.assertEqual(softened[-1],path[-1])
+        corner=softened[12]
+        self.assertGreater(corner[1],0)
+        self.assertLess(corner[0],.3)
+        rounded=HANDWRITING._round_path(softened)
+        self.assertEqual(rounded[0],path[0])
+        self.assertEqual(rounded[-1],path[-1])
+
     def test_samples_from_different_canvas_scales_cannot_blow_up_or_shrink_a_word(self):
         path=[[[0,0,.8],[1,1,.8]]]
         samples={

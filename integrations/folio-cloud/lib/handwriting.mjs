@@ -18,8 +18,8 @@ function roundPath(path){
   if(length1<1e-6||length2<1e-6){result.push(current);continue;}
   const ux1=dx1/length1,uy1=dy1/length1,ux2=dx2/length2,uy2=dy2/length2;
   const direction=Math.max(-1,Math.min(1,ux1*ux2+uy1*uy2));
-  if(direction>.88){result.push(current);continue;}
-  const cut=Math.min(length1,length2)*.22;
+  if(direction>.95){result.push(current);continue;}
+  const cut=Math.min(length1,length2)*.34;
   const entry=[current[0]-ux1*cut,current[1]-uy1*cut,current[2]+(before[2]-current[2])*(cut/length1)];
   const exit=[current[0]+ux2*cut,current[1]+uy2*cut,current[2]+(after[2]-current[2])*(cut/length2)];
   result.push(entry);
@@ -29,6 +29,29 @@ function roundPath(path){
   }
  }
  result.push(path.at(-1));
+ return result;
+}
+function softenDensePath(path,radius=.055){
+ if(path.length<4)return path;
+ const distances=[0];
+ for(let i=1;i<path.length;i++)distances.push(distances.at(-1)+Math.hypot(path[i][0]-path[i-1][0],path[i][1]-path[i-1][1]));
+ if(distances.at(-1)<radius*1.5)return path;
+ const result=[];let left=0,right=0;
+ for(let index=0;index<path.length;index++){
+  const center=distances[index];
+  if(index===0||index===path.length-1){result.push(path[index]);continue;}
+  const lower=center-radius,upper=center+radius;
+  while(left<path.length-1&&distances[left]<lower)left++;
+  right=Math.max(right,index);
+  while(right<path.length-1&&distances[right+1]<=upper)right++;
+  const sums=[0,0,0];let total=0;
+  for(let pointIndex=left;pointIndex<=right;pointIndex++){
+   const weight=Math.max(0,1-Math.abs(distances[pointIndex]-center)/radius),point=path[pointIndex];
+   for(let axis=0;axis<3;axis++)sums[axis]+=point[axis]*weight;
+   total+=weight;
+  }
+  result.push(total?sums.map(value=>value/total):path[index]);
+ }
  return result;
 }
 const median=values=>{
@@ -138,7 +161,7 @@ export function layout(text,x,y,height=28,width=2.2,color='#28344b',maxWidth=900
   if(advance>maxWidth)throw new Error('Образец шире строки');
   if(x>x0&&x+advance>x0+maxWidth){x=x0;y+=height*1.65;spaceScale=height;}
   for(const path of glyph.paths){
-   const renderPath=samples?roundPath(path):path;
+   const renderPath=samples?roundPath(softenDensePath(path)):path;
    points+=renderPath.length;
    if(out.length>=2000||points>100000)throw new Error('Разделите надпись на части');
    out.push({tool:'fountain',color,width,points:renderPath.map(point=>{
