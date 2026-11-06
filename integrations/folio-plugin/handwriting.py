@@ -154,7 +154,7 @@ def _round_path(path):
     result.append(path[-1])
     return result
 
-def _soften_dense_path(path,radius=.055):
+def _soften_dense_path(path,radius=.07):
     """Filter tiny sampling kinks over a glyph-relative arc length."""
     if len(path)<4:return path
     distances=[0.0]
@@ -178,6 +178,32 @@ def _soften_dense_path(path,radius=.055):
         result.append([value/total for value in sums] if total else path[index])
     return result
 
+def _trim_short_hooks(path,max_arc=.34,min_height=.07,max_width=.04,aspect=2.5,chord_ratio=.25,max_steps=48):
+    """Remove narrow upward retraces that leave a stick on a rounded letter."""
+    if len(path)<5:return path
+    distances=[0.0]
+    for before,after in zip(path,path[1:]):
+        distances.append(distances[-1]+math.hypot(after[0]-before[0],after[1]-before[1]))
+    result=[path[0]];index=1
+    while index<len(path)-1:
+        start=index-1;found=None;end=index+1
+        min_x=max_x=path[start][0];min_y=max_y=path[start][1]
+        while end<len(path)-1 and end<=start+max_steps and distances[end]-distances[start]<=max_arc:
+            point=path[end];min_x=min(min_x,point[0]);max_x=max(max_x,point[0]);min_y=min(min_y,point[1]);max_y=max(max_y,point[1])
+            arc=distances[end]-distances[start]
+            chord=math.hypot(path[end][0]-path[start][0],path[end][1]-path[start][1])
+            span_x=max_x-min_x;span_y=max_y-min_y
+            rises=min_y<min(path[start][1],path[end][1])-min_height
+            if arc>min_height*2 and chord<arc*chord_ratio and span_x<max_width and span_y>min_height and span_y>aspect*max(span_x,1e-6) and rises:
+                found=end;break
+            end+=1
+        if found is None:
+            result.append(path[index]);index+=1
+        else:
+            result.append(path[found]);index=found+1
+    result.append(path[-1])
+    return result
+
 def _personal_variation(glyph,token,seed,offset,baseline_fraction):
     """Apply subtle word-level deformation with continuous joins and stable retries."""
     points=[p for path in glyph['paths'] for p in path]
@@ -190,17 +216,20 @@ def _personal_variation(glyph,token,seed,offset,baseline_fraction):
     for weight in weights:
         acc+=total*weight/weight_total;edges.append(acc)
     rng=_seeded_random(seed,token,offset,'word')
-    global_x=1.10+rng.random()*.05
+    long_word_expansion=min(.08,max(0.0,len(characters)-9)*.015)
+    global_x=1.08+rng.random()*.04+long_word_expansion
     global_y=.995+rng.random()*.01
     baseline_shift=(rng.random()-.5)*.012
     global_slant=(rng.random()-.5)*.016
     widths=[];heights=[];vertical=[];slants=[]
+    variation_scale=min(1.0,8.0/len(characters))
     for index in range(len(characters)):
         rng=_seeded_random(seed,token,offset,'letter:'+str(index))
-        widths.append(global_x*(.985+rng.random()*.03))
-        heights.append(global_y*(.985+rng.random()*.03))
-        vertical.append((rng.random()-.5)*.024)
-        slants.append(global_slant+(rng.random()-.5)*.016)
+        widths.append(global_x*(1-.008*variation_scale+rng.random()*.016*variation_scale))
+        round_letter=.94 if characters[index].lower()=='о' else 1.0
+        heights.append(global_y*round_letter*(.995+rng.random()*.01*variation_scale))
+        vertical.append((rng.random()-.5)*.012*variation_scale)
+        slants.append(global_slant+(rng.random()-.5)*.008*variation_scale)
     edge_offsets=[0.0]
     for index in range(len(characters)):
         edge_offsets.append(edge_offsets[-1]+(edges[index+1]-edges[index])*(widths[index]-1))
@@ -239,7 +268,7 @@ def layout(text,x,y,height=28,width=2.2,color='#28344b',max_width=900,samples=No
             x=x0;y+=height*line_gap;line_baseline=y+height;i+=1;continue
         if text[i].isspace():
             gap_rng=_seeded_random(variation_seed,text[i],i,'space') if samples is not None and variation_seed else None
-            gap=.20+(gap_rng.random()*.08 if gap_rng else .04) if samples is not None else .65
+            gap=.38+(gap_rng.random()*.08 if gap_rng else .04) if samples is not None else .65
             x+=space_scale*gap;i+=1;continue
         if samples is None: token=text[i];glyph=builtin(token)
         else:
@@ -253,7 +282,7 @@ def layout(text,x,y,height=28,width=2.2,color='#28344b',max_width=900,samples=No
             if len(token)>1:
                 # Word examples may come from notebooks written at different canvas
                 # zoom levels. Preserve single-glyph geometry; bound only whole words.
-                ratio=max(.84,min(1.18,ratio))
+                ratio=max(.96,min(1.04,ratio))
             glyph_height=height*ratio
         advance=glyph['advance']*glyph_height
         if advance>max_width:raise ValueError('Образец шире строки; уменьшите высоту или увеличьте max_width')
@@ -270,7 +299,7 @@ def layout(text,x,y,height=28,width=2.2,color='#28344b',max_width=900,samples=No
         if samples is not None:
             variation,advance_scale=varied if varied is not None else (None,1)
         for path in glyph['paths']:
-            render_path=_round_path(_soften_dense_path(path)) if samples is not None else path
+            render_path=_round_path(_soften_dense_path(_trim_short_hooks(path))) if samples is not None else path
             if len(result)>=2000 or sum(len(s['points']) for s in result)+len(render_path)>100000:raise ValueError('Надпись слишком большая; разделите её на части')
             points=[]
             for p in render_path:

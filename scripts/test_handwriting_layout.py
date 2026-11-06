@@ -56,6 +56,41 @@ class HandwritingLayoutTests(unittest.TestCase):
         self.assertEqual(rounded[0],path[0])
         self.assertEqual(rounded[-1],path[-1])
 
+    def test_short_upward_hook_on_a_round_letter_is_removed(self):
+        oval=[]
+        for index in range(41):
+            angle=2*math.pi*index/40
+            oval.append([.2+.12*math.cos(angle),.55+.18*math.sin(angle),.8])
+        top=30;anchor=oval[top]
+        path=oval[:top]+[anchor,[anchor[0],anchor[1]-.06,.8],[anchor[0]+.005,anchor[1]-.12,.8],[anchor[0]+.01,anchor[1]-.06,.8],anchor]+oval[top+1:]
+        trimmed=HANDWRITING._trim_short_hooks(path)
+        self.assertEqual(trimmed[0],path[0])
+        self.assertEqual(trimmed[-1],path[-1])
+        self.assertGreater(min(point[1] for point in trimmed),min(point[1] for point in path)+.1)
+
+    def test_personal_words_keep_a_consistent_height_and_clear_gap(self):
+        path=[[[0,0,.8],[1,1,.8]]]
+        samples={
+            'хорошая':{'advance':1.3,'natural_height':10,'paths':path},
+            'Проведём':{'advance':1.3,'natural_height':100,'paths':path},
+        }
+        small=HANDWRITING.layout('хорошая',0,0,40,2,'#123456',900,samples)[0]['points']
+        tall=HANDWRITING.layout('Проведём',0,0,40,2,'#123456',900,samples)[0]['points']
+        small_height=max(p[1] for p in small)-min(p[1] for p in small)
+        tall_height=max(p[1] for p in tall)-min(p[1] for p in tall)
+        self.assertLess(abs(tall_height-small_height),40*.09)
+        phrase=HANDWRITING.layout('хорошая Проведём',0,0,40,2,'#123456',900,samples,variation_seed='space-check')
+        first_right=max(p[0] for p in phrase[0]['points'])
+        second_left=min(p[0] for p in phrase[1]['points'])
+        self.assertGreater(second_left-first_right,40*.35)
+
+    def test_long_personal_words_get_more_horizontal_room(self):
+        word='увеличивается'
+        sample={word:{'advance':1.0,'natural_height':40,'paths':[[[0,0,.8],[1,1,.8]]]}}
+        stroke=HANDWRITING.layout(word,0,0,40,2,'#123456',900,sample,variation_seed='long-word')[0]
+        width=max(point[0] for point in stroke['points'])-min(point[0] for point in stroke['points'])
+        self.assertGreater(width,40*1.14)
+
     def test_samples_from_different_canvas_scales_cannot_blow_up_or_shrink_a_word(self):
         path=[[[0,0,.8],[1,1,.8]]]
         samples={
@@ -64,8 +99,8 @@ class HandwritingLayoutTests(unittest.TestCase):
         }
         small=HANDWRITING.layout('хорошая',0,0,40,2,'#123456',900,samples)[0]['points']
         tall=HANDWRITING.layout('Проведём',0,0,40,2,'#123456',900,samples)[0]['points']
-        self.assertAlmostEqual(small[1][1]-small[0][1],33.6,places=3)
-        self.assertAlmostEqual(tall[1][1]-tall[0][1],47.2,places=3)
+        self.assertAlmostEqual(small[1][1]-small[0][1],38.4,places=3)
+        self.assertAlmostEqual(tall[1][1]-tall[0][1],41.6,places=3)
 
 
 if __name__=='__main__':

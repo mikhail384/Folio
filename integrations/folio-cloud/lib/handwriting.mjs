@@ -31,7 +31,7 @@ function roundPath(path){
  result.push(path.at(-1));
  return result;
 }
-function softenDensePath(path,radius=.055){
+function softenDensePath(path,radius=.07){
  if(path.length<4)return path;
  const distances=[0];
  for(let i=1;i<path.length;i++)distances.push(distances.at(-1)+Math.hypot(path[i][0]-path[i-1][0],path[i][1]-path[i-1][1]));
@@ -52,6 +52,27 @@ function softenDensePath(path,radius=.055){
   }
   result.push(total?sums.map(value=>value/total):path[index]);
  }
+ return result;
+}
+function trimShortHooks(path,maxArc=.34,minHeight=.07,maxWidth=.04,aspect=2.5,chordRatio=.25,maxSteps=48){
+ if(path.length<5)return path;
+ const distances=[0];
+ for(let i=1;i<path.length;i++)distances.push(distances.at(-1)+Math.hypot(path[i][0]-path[i-1][0],path[i][1]-path[i-1][1]));
+ const result=[path[0]];let index=1;
+ while(index<path.length-1){
+  const start=index-1;let found=-1,end=index+1;
+  let minX=path[start][0],maxX=path[start][0],minY=path[start][1],maxY=path[start][1];
+  while(end<path.length-1&&end<=start+maxSteps&&distances[end]-distances[start]<=maxArc){
+   const point=path[end];minX=Math.min(minX,point[0]);maxX=Math.max(maxX,point[0]);minY=Math.min(minY,point[1]);maxY=Math.max(maxY,point[1]);
+   const arc=distances[end]-distances[start],chord=Math.hypot(path[end][0]-path[start][0],path[end][1]-path[start][1]);
+   const spanX=maxX-minX,spanY=maxY-minY,rises=minY<Math.min(path[start][1],path[end][1])-minHeight;
+   if(arc>minHeight*2&&chord<arc*chordRatio&&spanX<maxWidth&&spanY>minHeight&&spanY>aspect*Math.max(spanX,1e-6)&&rises){found=end;break;}
+   end++;
+  }
+  if(found<0){result.push(path[index]);index++;}
+  else{result.push(path[found]);index=found+1;}
+ }
+ result.push(path.at(-1));
  return result;
 }
 const median=values=>{
@@ -85,15 +106,17 @@ function personalVariation(glyph,token,seed,offset,baseline){
  let cursor=left;
  for(const weight of weights){cursor+=total*weight/weightTotal;edges.push(cursor);}
  let random=seeded(seed,token,offset,'word');
- const globalX=1.10+random()*.05,globalY=.995+random()*.01;
+ const longWordExpansion=Math.min(.08,Math.max(0,characters.length-9)*.015);
+ const globalX=1.08+random()*.04+longWordExpansion,globalY=.995+random()*.01;
  const baselineShift=(random()-.5)*.012,globalSlant=(random()-.5)*.016;
- const scalesX=[],scalesY=[],vertical=[],slants=[];
+ const scalesX=[],scalesY=[],vertical=[],slants=[],variationScale=Math.min(1,8/characters.length);
  for(let index=0;index<characters.length;index++){
   random=seeded(seed,token,offset,`letter:${index}`);
-  scalesX.push(globalX*(.985+random()*.03));
-  scalesY.push(globalY*(.985+random()*.03));
-  vertical.push((random()-.5)*.024);
-  slants.push(globalSlant+(random()-.5)*.016);
+  scalesX.push(globalX*(1-.008*variationScale+random()*.016*variationScale));
+  const roundLetter=characters[index].toLowerCase()==='о' ? .94 : 1;
+  scalesY.push(globalY*roundLetter*(.995+random()*.01*variationScale));
+  vertical.push((random()-.5)*.012*variationScale);
+  slants.push(globalSlant+(random()-.5)*.008*variationScale);
  }
  const edgeOffsets=[0];
  for(let index=0;index<characters.length;index++)edgeOffsets.push(edgeOffsets[index]+(edges[index+1]-edges[index])*(scalesX[index]-1));
@@ -130,7 +153,7 @@ export function layout(text,x,y,height=28,width=2.2,color='#28344b',maxWidth=900
   }
   if(/\s/.test(token)){
    const random=samples&&variationSeed?seeded(variationSeed,text[i],i,'space'):null;
-   x+=spaceScale*(samples?(.20+(random?random()*.08:.04)):.65);i++;continue;
+   x+=spaceScale*(samples?(.38+(random?random()*.08:.04)):.65);i++;continue;
   }
   if(samples){
    token=sampleLabels.find(label=>text.startsWith(label,i));
@@ -153,7 +176,7 @@ export function layout(text,x,y,height=28,width=2.2,color='#28344b',maxWidth=900
   let glyphHeight=height;
   if(samples&&referenceHeight&&Number.isFinite(glyph.natural_height)&&glyph.natural_height>0){
    let ratio=glyph.natural_height/referenceHeight;
-   if([...token].length>1)ratio=Math.max(.84,Math.min(1.18,ratio));
+   if([...token].length>1)ratio=Math.max(.96,Math.min(1.04,ratio));
    glyphHeight=height*ratio;
   }
   const variation=samples&&variationSeed?personalVariation(glyph,token,variationSeed,i,1):null;
@@ -161,7 +184,7 @@ export function layout(text,x,y,height=28,width=2.2,color='#28344b',maxWidth=900
   if(advance>maxWidth)throw new Error('Образец шире строки');
   if(x>x0&&x+advance>x0+maxWidth){x=x0;y+=height*1.65;spaceScale=height;}
   for(const path of glyph.paths){
-   const renderPath=samples?roundPath(softenDensePath(path)):path;
+   const renderPath=samples?roundPath(softenDensePath(trimShortHooks(path))):path;
    points+=renderPath.length;
    if(out.length>=2000||points>100000)throw new Error('Разделите надпись на части');
    out.push({tool:'fountain',color,width,points:renderPath.map(point=>{

@@ -47,7 +47,7 @@ class HandwritingTests(unittest.TestCase):
     def test_personal_word_spacing_matches_notebook_gap(self):
         glyph={'advance':1,'paths':[[[0,0,1],[1,0,1]]]}
         strokes=layout('а а',0,0,20,samples={'а':glyph})
-        self.assertEqual(strokes[1]['points'][0][0],24.8)
+        self.assertEqual(strokes[1]['points'][0][0],28.4)
     def test_personal_words_keep_sampled_relative_height_and_shared_baseline(self):
         samples={
             'а':{'advance':1,'natural_height':20,'baseline_fraction':1,'paths':[[[0,0,1],[1,1,1]]]},
