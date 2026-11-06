@@ -137,7 +137,6 @@ final class ChatGPTAuth {
                     .put("scope",scopes).put("expires_at",System.currentTimeMillis()+Math.max(1,tokens.optLong("expires_in",3600))*1000L);
                 save(activity,saved);
                 Account result=new Account(saved);
-                if(!result.canUsePlan())throw new IOException("Вход выполнен, но доступ chatgpt.tokens.use.direct не выдан. Проверьте подтверждение доступа к плану ChatGPT и повторите вход.");
                 deliver(activity,callback,result,null);
             }catch(Exception error){Exception launch=launchError.get();deliver(activity,callback,null,launch==null?error:new IOException("Не удалось открыть защищённый вход в браузере.",launch));}
             finally{if(server!=null)try{server.close();}catch(IOException ignored){}try{activity.getApplicationContext().stopService(new Intent(activity,ChatGPTAuthService.class));}catch(Exception ignored){}}
@@ -161,7 +160,13 @@ final class ChatGPTAuth {
                 if(!"/auth/callback".equals(uri.getPath())){respond(socket,404,"Путь не найден");continue;}
                 CallbackData result=new CallbackData();result.state=queryValue(uri,"state");result.error=queryValue(uri,"error");result.code=queryValue(uri,"code");result.clientId=queryValue(uri,"client_id");result.scope=queryValue(uri,"scope");
                 if(!constantEquals(expectedState,result.state)){respond(socket,400,"Проверка входа не пройдена. Вернитесь в Folio и повторите попытку.");throw new IOException("Проверка OAuth state не пройдена.");}
-                if(!result.error.isEmpty()){respond(socket,200,"Вход отменён. Можно вернуться в Folio.");throw new IOException(result.error.equals("access_denied")?"Доступ к плану ChatGPT не подтверждён.":"Вход в ChatGPT завершился ошибкой: "+result.error);}
+                if(!result.error.isEmpty()){
+                    String code=result.error.toLowerCase(Locale.ROOT),description=queryValue(uri,"error_description").toLowerCase(Locale.ROOT);
+                    String message=code.contains("workspace")||description.contains("workspace")
+                        ?"Этот аккаунт не имеет доступа к приложению в рабочей области OpenAI. Войдите в разрешённый аккаунт или попросите владельца рабочей области предоставить доступ."
+                        :result.error.equals("access_denied")?"Вход отменён или разрешение ChatGPT не подтверждено.":"Вход в ChatGPT завершился ошибкой: "+result.error;
+                    respond(socket,200,message+" Вернитесь в Folio.");throw new IOException(message);
+                }
                 if(result.code==null||result.code.isEmpty()){respond(socket,400,"В ответе нет кода авторизации.");throw new IOException("OpenAI не вернул код авторизации.");}
                 respond(socket,200,"Вход подтверждён. Возвращаемся в Folio — приложение завершит подключение.");return result;
             }
@@ -215,11 +220,19 @@ final class ChatGPTAuth {
         return new JSONObject(response);
     }
     static IOException httpError(int status,String response){
-        String code="",message="";try{JSONObject json=new JSONObject(response);JSONObject error=json.optJSONObject("error");if(error!=null){code=error.optString("code",error.optString("type",""));message=error.optString("message","");}}catch(Exception ignored){}
-        if(code.contains("usage_limit")||code.contains("usage_unavailable")||status==429)return new IOException("Лимит использования плана ChatGPT достигнут или временно недоступен. Попробуйте позже.");
-        if(status==401||status==403)return new IOException("OpenAI не принял разрешение входа. Подключите ChatGPT повторно.");
-        if(status==400&&code.contains("subscription_sharing_unsupported_capability"))return new IOException("Этот запрос или модель пока не поддерживается доступом через план ChatGPT.");
-        if(message.length()>220)message=message.substring(0,220);
+        String code="",message="";try{JSONObject json=new JSONObject(response);JSONObject error=json.optJSONObject("error");if(error!=null){code=error.optString("code",error.optString("type",""));message=error.optString("message","");}else {Object detail=json.opt("detail"),topMessage=json.opt("message");if(detail instanceof String)message=(String)detail;else if(topMessage instanceof String)message=(String)topMessage;}}catch(Exception ignored){}
+        if(message.length()>220)message=message.substring(0,220);String normalized=code.toLowerCase(Locale.ROOT);
+        if(normalized.contains("usage_limit_exceeded")||normalized.contains("usage_limit")||status==429)return new IOException("Лимит использования плана ChatGPT достигнут. Попробуйте позже.");
+        if(normalized.contains("usage_unavailable")||normalized.contains("user_unavailable"))return new IOException("OpenAI временно не подтвердил доступ к аккаунту или рабочей области. Повторите позже.");
+        if(status==503)return new IOException("Доступ к плану ChatGPT временно недоступен. Подождите и повторите позже.");
+        if(normalized.contains("subscription_sharing_user_not_eligible")||normalized.contains("chatpass_v2_scope_not_authorized")||normalized.contains("chatpass_v2_invalid_authorization_context"))return new IOException("Выбранный аккаунт или рабочая область не разрешает запросы через план ChatGPT. Повторный вход это ограничение не снимет.");
+        if(normalized.contains("subscription_sharing_invalid_user"))return new IOException("OpenAI не подтвердил выбранную учётную запись. Проверьте, какой аккаунт активен; если доступ был отозван, подключите именно этот аккаунт заново.");
+        if(normalized.contains("subscription_sharing_unsupported_capability"))return new IOException("Этот запрос, модель или функция пока не поддерживается планом ChatGPT.");
+        if(normalized.contains("subscription_sharing_route_not_supported"))return new IOException("Для доступа через план ChatGPT этот адрес API не поддерживается.");
+        if(normalized.contains("workspace_scope_denied"))return new IOException("Этот аккаунт не входит в рабочую область, которой разрешено использовать приложение. Выберите аккаунт с доступом или попросите владельца рабочей области предоставить доступ.");
+        if(normalized.equals("invalid_grant")||normalized.equals("invalid_refresh_token")||normalized.equals("refresh_token_expired")||normalized.equals("refresh_token_invalidated")||normalized.equals("refresh_token_reused"))return new IOException("Разрешение этой учётной записи истекло или отозвано. Откройте «Аккаунты ChatGPT» и подключите её заново.");
+        if(status==401)return new IOException("OpenAI не принял разрешение выбранного аккаунта (HTTP 401). Проверьте активный аккаунт и выданные ему разрешения.");
+        if(status==403)return new IOException("OpenAI запретил запрос для выбранного аккаунта, рабочей области или политики. Повторный вход не снимет такое ограничение."+(message.isEmpty()?"":" "+message));
         return new IOException("Запрос к OpenAI не выполнен (HTTP "+status+")"+(code.isEmpty()?"":" · "+code)+(message.isEmpty()?"":" · "+message));
     }
     static String readUtf8(InputStream in,int max)throws IOException{

@@ -72,7 +72,7 @@ final class ChatGPTStudio {
             accountState=a.text("Проверяем подключение…",11,Studio.MUTED,false);accountState.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);account.addView(accountState);
             root.addView(account);
 
-            switchAccountButton=Studio.button(a,"Аккаунты ChatGPT",false,this::switchAccount);switchAccountButton.setTextSize(10);switchAccountButton.setVisibility(View.GONE);LinearLayout.LayoutParams switchLp=new LinearLayout.LayoutParams(-2,-2);switchLp.topMargin=a.dp(4);root.addView(switchAccountButton,switchLp);
+            switchAccountButton=Studio.button(a,"Выбрать аккаунт ChatGPT",false,this::switchAccount);switchAccountButton.setTextSize(10);LinearLayout.LayoutParams switchLp=new LinearLayout.LayoutParams(-2,-2);switchLp.topMargin=a.dp(4);root.addView(switchAccountButton,switchLp);
 
             LinearLayout mode=a.row();mode.setGravity(Gravity.CENTER_VERTICAL);a.pad(mode,12,9);mode.setBackground(Studio.surface(Studio.CARD,16,a.getResources().getDisplayMetrics().density));
             LinearLayout modeText=a.column();modeText.addView(a.text("Писать ответы на холст",13,Studio.TEXT,true));TextView modeHint=a.text("Выкл. — ответ в окне · вкл. — на странице",10,Studio.MUTED,false);LinearLayout.LayoutParams mh=new LinearLayout.LayoutParams(-1,-2);mh.topMargin=a.dp(3);modeText.addView(modeHint,mh);mode.addView(modeText,new LinearLayout.LayoutParams(0,-2,1));
@@ -117,12 +117,15 @@ final class ChatGPTStudio {
 
         void loadConnection(){
             ChatGPTAuth.Account saved=ChatGPTAuth.account(a);
-            switchAccountButton.setVisibility(saved==null?View.GONE:View.VISIBLE);
+            int accountCount=ChatGPTAuth.accounts(a).size();
+            switchAccountButton.setVisibility(View.VISIBLE);
+            switchAccountButton.setText(accountCount==0?"Выбрать аккаунт ChatGPT":accountCount==1?"Добавить второй аккаунт":"Сменить аккаунт · "+accountCount);
             if(saved==null){accountState.setText("Не подключено");modelButton.setText("Доступные модели появятся после входа");return;}
-            if(!HISTORY_SUBJECT.isEmpty()&&!HISTORY_SUBJECT.equals(saved.subject())){HISTORY.clear();transcript.removeAllViews();addBubble("assistant","Начните новый диалог для этой учётной записи.",null);}
-            HISTORY_SUBJECT=saved.subject();
+            String accountKey=saved.subject()+"|"+saved.clientId();
+            if(!HISTORY_SUBJECT.isEmpty()&&!HISTORY_SUBJECT.equals(accountKey)){HISTORY.clear();transcript.removeAllViews();addBubble("assistant","Начните новый диалог для этой учётной записи.",null);}
+            HISTORY_SUBJECT=accountKey;
             accountState.setText(saved.email().isEmpty()?"Подключено":"Подключено · "+saved.email());
-            if(!saved.canUsePlan()){connectionHint.setText("Вход сохранён. Разрешите использование плана ChatGPT кнопкой ниже.");return;}
+            if(!saved.canUsePlan()){connectionHint.setText("Вход сохранён, но доступ к плану ChatGPT не выдан. Нажмите кнопку выбора аккаунта и выберите активный аккаунт, чтобы повторить запрос разрешения.");return;}
             if(!models.isEmpty())return;
             modelButton.setText("Загружаем модели…");connectionHint.setText("Используется разрешение вашего плана ChatGPT.");
             new Thread(()->{
@@ -134,24 +137,24 @@ final class ChatGPTStudio {
         void refreshModelLabel(){for(ChatGPTAuth.Model model:models)if(model.slug.equals(selectedModel)){modelButton.setText("Модель · "+model.name+"  ▾");return;}modelButton.setText("Выбрать модель  ▾");}
         void chooseModel(){if(models.isEmpty()){loadConnection();return;}CharSequence[] names=new CharSequence[models.size()];for(int i=0;i<models.size();i++)names[i]=models.get(i).name+" · "+models.get(i).slug;new Studio.Builder(a).setTitle("Модель ChatGPT").setItems(names,(dialog,index)->{selectedModel=models.get(index).slug;a.prefs.edit().putString("chatgpt_model",selectedModel).apply();refreshModelLabel();}).width(420).show();}
 
-        void connect(){beginSignIn(false);}
+        void connect(){if(ChatGPTAuth.account(a)==null)beginSignIn(true);else switchAccount();}
         void switchAccount(){
             List<ChatGPTAuth.Account> saved=ChatGPTAuth.accounts(a);ChatGPTAuth.Account active=ChatGPTAuth.account(a);CharSequence[] choices=new CharSequence[saved.size()+1];
             for(int i=0;i<saved.size();i++){ChatGPTAuth.Account item=saved.get(i);String label=item.email().isEmpty()?"Аккаунт "+(i+1):item.email();if(item.subject().equals(active==null?"":active.subject())&&item.clientId().equals(active==null?"":active.clientId()))label+=" · активен";else if(saved.size()>1&&label.equals(saved.get(0).email()))label+=" · регистрация "+(i+1);choices[i]=label;}
             choices[saved.size()]="Добавить аккаунт…";
             new Studio.Builder(a).setTitle("Аккаунты ChatGPT").setItems(choices,(dialog,index)->{
                 if(index==saved.size()){beginSignIn(true);return;}
-                ChatGPTAuth.Account picked=saved.get(index);if(active!=null&&picked.subject().equals(active.subject())&&picked.clientId().equals(active.clientId()))return;
+                ChatGPTAuth.Account picked=saved.get(index);if(active!=null&&picked.subject().equals(active.subject())&&picked.clientId().equals(active.clientId())){beginSignIn(false);return;}
                 if(!ChatGPTAuth.activateAccount(a,picked.subject(),picked.clientId())){connectionHint.setText("Не удалось переключить сохранённый аккаунт.");return;}
                 models.clear();selectedModel="";a.prefs.edit().remove("chatgpt_model").apply();loadConnection();a.toast("Аккаунт ChatGPT переключён");
             }).width(420).show();
         }
         void beginSignIn(boolean selectDifferentAccount){
             accountState.setText(selectDifferentAccount?"Выбираем аккаунт…":"Ожидаем подтверждения входа…");
-            connectionHint.setText(selectDifferentAccount?"Выберите другой аккаунт в браузере. Текущий вход сохранится, если вы отмените переключение.":"Подтвердите вход в браузере — после этого Folio откроется автоматически.");
+            connectionHint.setText(selectDifferentAccount?"Выберите нужный аккаунт в браузере. Сохранённые входы останутся, если вы отмените подключение. Если OpenAI сообщает, что аккаунту недоступно приложение или рабочая область, доступ должен разрешить владелец этой рабочей области.":"Подтвердите вход в браузере — после этого Folio откроется автоматически.");
             ChatGPTAuth.signIn(a,selectDifferentAccount,(account,error)->{
                 if(error!=null){ChatGPTAuth.Account current=ChatGPTAuth.account(a);accountState.setText(current==null?"Не подключено":current.email().isEmpty()?"Подключено":"Подключено · "+current.email());connectionHint.setText(error.getMessage()==null?"Не удалось подключить ChatGPT.":error.getMessage());switchAccountButton.setVisibility(current==null?View.GONE:View.VISIBLE);a.toast("Не удалось подключить ChatGPT");return;}
-                accountState.setText(account.email().isEmpty()?"Подключено":"Подключено · "+account.email());connectionHint.setText("Вход защищённо сохранён на этом устройстве.");models.clear();
+                accountState.setText(account.email().isEmpty()?"Подключено":"Подключено · "+account.email());connectionHint.setText(account.canUsePlan()?"Вход защищённо сохранён на этом устройстве.":"Вход сохранён, но разрешение на использование плана ChatGPT не выдано. Откройте выбор аккаунта, выберите эту запись и повторите запрос разрешения.");models.clear();
                 if(selectDifferentAccount){selectedModel="";a.prefs.edit().remove("chatgpt_model").apply();}
                 loadConnection();a.toast(selectDifferentAccount?"Аккаунт ChatGPT изменён":"ChatGPT подключён к Folio");
             });
@@ -189,7 +192,7 @@ final class ChatGPTStudio {
                 int status=con.getResponseCode();if(status<200||status>=300){String error=ChatGPTAuth.readUtf8(con.getErrorStream(),1024*1024);throw ChatGPTAuth.httpError(status,error);}
                 try(java.io.BufferedReader reader=new java.io.BufferedReader(new java.io.InputStreamReader(con.getInputStream(),StandardCharsets.UTF_8))){String line;while((line=reader.readLine())!=null){if(!line.startsWith("data:"))continue;String data=line.substring(5).trim();if(data.isEmpty()||data.equals("[DONE]"))continue;JSONObject event;try{event=new JSONObject(data);}catch(Exception ignored){continue;}String type=event.optString("type");
                     if(type.equals("response.output_text.delta")){String delta=event.optString("delta","");if(!delta.isEmpty()){answer.append(delta);publishDelta(answer.toString());}}
-                    else if(type.equals("response.failed")){JSONObject response=event.optJSONObject("response"),problem=response==null?null:response.optJSONObject("error");String code=problem==null?"unknown_error":problem.optString("code","unknown_error"),detail=problem==null?"":problem.optString("message","");if(code.contains("usage_limit")||code.contains("usage_unavailable"))throw new IOException("Лимит использования плана ChatGPT достигнут или временно недоступен. Попробуйте позже.");if(detail.length()>220)detail=detail.substring(0,220);throw new IOException("Запрос завершился с ошибкой ("+code+")"+(detail.isEmpty()?"":" · "+detail));}
+                    else if(type.equals("response.failed")){JSONObject response=event.optJSONObject("response"),problem=response==null?null:response.optJSONObject("error");String code=problem==null?"unknown_error":problem.optString("code","unknown_error"),detail=problem==null?"":problem.optString("message","");if(code.contains("usage_limit_exceeded")||code.contains("usage_limit"))throw new IOException("Лимит использования плана ChatGPT достигнут. Попробуйте позже.");if(code.contains("usage_unavailable")||code.contains("user_unavailable"))throw new IOException("OpenAI временно не подтвердил доступ к аккаунту или рабочей области. Попробуйте позже.");if(code.contains("subscription_sharing_user_not_eligible")||code.contains("chatpass_v2_scope_not_authorized")||code.contains("chatpass_v2_invalid_authorization_context"))throw new IOException("Выбранный аккаунт или рабочая область не разрешает запросы через план ChatGPT. Повторный вход это ограничение не снимет.");if(code.contains("subscription_sharing_invalid_user"))throw new IOException("OpenAI не подтвердил выбранную учётную запись. Проверьте активный аккаунт и разрешения.");if(code.contains("subscription_sharing_route_not_supported"))throw new IOException("Для доступа через план ChatGPT этот адрес API не поддерживается.");if(code.contains("subscription_sharing_unsupported_capability"))throw new IOException("Эта модель, функция или тип входных данных пока не поддерживается планом ChatGPT.");if(detail.length()>220)detail=detail.substring(0,220);throw new IOException("Запрос завершился с ошибкой ("+code+")"+(detail.isEmpty()?"":" · "+detail));}
                     else if(type.equals("response.incomplete")){JSONObject response=event.optJSONObject("response");String reason=response==null?"":response.optJSONObject("incomplete_details")==null?"":response.optJSONObject("incomplete_details").optString("reason","");throw new IOException("Ответ не завершён"+(reason.isEmpty()?"":" · "+reason)+".");}
                     else if(type.equals("response.completed")){completed=true;break;}
                 }}
