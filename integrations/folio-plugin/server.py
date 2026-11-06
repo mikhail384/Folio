@@ -121,15 +121,16 @@ def create_server():
 
     @mcp.tool(annotations=write)
     async def folio_write_text(text:str,document_id:str,page_id:str,revision:str,x:float,y:float,height:float=28,color:str='#28344b',width:float=2.2,max_width:float=900,style:str='neat',profile:str='my-handwriting',operation_id:str='')->dict:
-        """Write EDITABLE vector handwriting at (x,y). neat = built-in Cyrillic/Latin print hand. personal = user's captured glyphs/words; missing samples cause an error. Read the canvas first. Returns operation_id for selective undo; autosave is queued in Folio."""
+        """Write EDITABLE vector handwriting at (x,y). neat = built-in Cyrillic/Latin print hand. personal = user's captured vector samples with small smooth word-level variation and bounded sample size, keyed to operation_id; missing samples cause an error. This is sample-based composition, not neural model training. Read the canvas first. Returns operation_id for selective undo; autosave is queued in Folio."""
         if style not in ('neat','personal'):raise ValueError('style: neat или personal')
         samples=None
         if style=='personal':
             p=profile_path(profile)
             if not p.is_file():raise ValueError('Профиль почерка ещё не создан. Используйте folio_learn_handwriting_sample.')
             samples=json.loads(p.read_text(encoding='utf-8'))['samples']
-        strokes=layout(text,x,y,height,width,color,max_width,samples)
-        return await api('ink',dict(document_id=document_id,page_id=page_id,revision=revision,operation_id=operation_id or uuid.uuid4().hex,strokes=strokes))
+        operation_id=operation_id or uuid.uuid4().hex
+        strokes=layout(text,x,y,height,width,color,max_width,samples,variation_seed=operation_id)
+        return await api('ink',dict(document_id=document_id,page_id=page_id,revision=revision,operation_id=operation_id,strokes=strokes))
 
     @mcp.tool(annotations=write)
     async def folio_draw_ink(strokes:list[dict],document_id:str,page_id:str,revision:str,operation_id:str='')->dict:

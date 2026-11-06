@@ -44,6 +44,48 @@ class HandwritingTests(unittest.TestCase):
             self.assertTrue(layout(char,0,0));
     def test_personal_exact_geometry(self):
         glyph=sample_from_selection([{'points':[10,20,1,0,0,20,40,.5,0,0]}]);path=layout('я',100,200,20,samples={'я':glyph})[0]['points'];self.assertEqual(path,[[100,200,1],[110,220,.5]])
+    def test_personal_word_spacing_matches_notebook_gap(self):
+        glyph={'advance':1,'paths':[[[0,0,1],[1,0,1]]]}
+        strokes=layout('а а',0,0,20,samples={'а':glyph})
+        self.assertEqual(strokes[1]['points'][0][0],24.8)
+    def test_personal_words_keep_sampled_relative_height_and_shared_baseline(self):
+        samples={
+            'а':{'advance':1,'natural_height':20,'baseline_fraction':1,'paths':[[[0,0,1],[1,1,1]]]},
+            'б':{'advance':1,'natural_height':40,'baseline_fraction':.75,'paths':[[[0,0,1],[1,1,1]]]}
+        }
+        first,second=layout('аб',0,0,30,samples=samples)
+        self.assertEqual(first['points'][0][1],10)
+        self.assertEqual(second['points'][0][0],20)
+        self.assertEqual(second['points'][0][1],0)
+        self.assertEqual(first['points'][-1][1],30)
+        self.assertEqual(second['points'][-1][1],40)
+    def test_personal_text_height_uses_prose_words_not_formula_sizes(self):
+        from handwriting import _profile_reference_height
+        samples={
+            'слово':{'advance':1,'natural_height':20,'paths':[]},
+            'другое':{'advance':1,'natural_height':40,'paths':[]},
+            'NaOH':{'advance':1,'natural_height':100,'paths':[]},
+            'А':{'advance':1,'natural_height':160,'paths':[]}
+        }
+        self.assertEqual(_profile_reference_height(samples),30)
+    def test_personal_variants_are_repeatable_per_operation_and_change_between_writes(self):
+        sample={'variants':[
+            {'advance':1,'paths':[[[0,0,1],[1,1,1]]]},
+            {'advance':1,'paths':[[[2,0,1],[3,1,1]]]}
+        ]}
+        samples={'а':sample}
+        first=layout('а',0,0,samples=samples,variation_seed='write-1')
+        self.assertEqual(first,layout('а',0,0,samples=samples,variation_seed='write-1'))
+        outputs={tuple(tuple(p) for p in layout('а',0,0,samples=samples,variation_seed=f'write-{i}')[0]['points']) for i in range(64)}
+        self.assertGreater(len(outputs),2)
+    def test_repeated_personal_letters_get_stable_independent_variation(self):
+        glyph={'advance':1.2,'paths':[[[0,0.1,1],[.45,.65,.8],[.9,.1,1]]],'natural_height':20}
+        samples={'а':glyph}
+        first=layout('ааа',0,0,20,samples=samples,variation_seed='operation-a')
+        self.assertEqual(first,layout('ааа',0,0,20,samples=samples,variation_seed='operation-a'))
+        self.assertEqual(len(first),3)
+        self.assertEqual(len({tuple(tuple(p) for p in stroke['points']) for stroke in first}),3)
+        self.assertNotEqual(first,layout('ааа',0,0,20,samples=samples,variation_seed='operation-b'))
     def test_personal_pressure_replays_safely_on_installed_folio(self):
         import struct
         pressures=[.019999999552965164,.02,0,2,3,float('nan'),None]

@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "folio-canvas",
-  "version": "0.3.1",
+  "version": "0.3.3",
   "description": "Read Folio's active canvas, write editable handwriting, draw and selectively undo AI ink.",
   "author": {"name": "Folio"},
   "repository": "https://github.com/mikhail384/Folio",

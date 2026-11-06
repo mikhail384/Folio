@@ -1,9 +1,13 @@
-"""Editable single-line print handwriting, plus exact vector samples from Folio.
+"""Editable print handwriting plus user-sampled vector handwriting.
 
 Built-in glyphs are authored for Folio; no rasterization, outline tracing or font dependency.
-Personal samples keep their original paths. This is glyph composition, not a trained cursive model.
+Personal paths stay stored as captured. Each playback can apply a small deterministic
+per-letter warp, keyed by operation ID so retrying a write reproduces the same strokes.
+This is sample-based variation, not a trained generative cursive model.
 """
+import hashlib
 import math
+import random
 
 def _replay_pressure(value):
     # Folio 1.18 compares float pressure against a double 0.02; keep even
@@ -67,37 +71,161 @@ def builtin(character):
         paths.append(pts)
     return {'paths':paths,'advance':1.3 if not lower else 1.2}
 
-def sample_from_selection(strokes):
+def sample_from_selection(strokes,baseline_fraction=None):
     paths=[]
     for s in strokes:
         p=s['points']
-        paths.append([[p[i],p[i+1],p[i+2]] for i in range(0,len(p),5)])
+        path=[[p[i],p[i+1],p[i+2]] for i in range(0,len(p)-2,5)]
+        paths.append(path)
     all_points=[p for path in paths for p in path]
     if not all_points: raise ValueError('Пустой образец')
     x=min(p[0] for p in all_points); y=min(p[1] for p in all_points)
     h=max(p[1] for p in all_points)-y; w=max(p[0] for p in all_points)-x
     if h<1 or w<.1: raise ValueError('Слишком маленький образец')
-    return {'paths':[[[(p[0]-x)/h,(p[1]-y)/h,max(.02,min(2,p[2]))] for p in path] for path in paths], 'advance':w/h+.25}
+    sample={'paths':[[[(p[0]-x)/h,(p[1]-y)/h,max(.02,min(2,p[2]))] for p in path] for path in paths], 'advance':w/h+.25,'natural_height':round(h,4)}
+    if type(baseline_fraction) in (int,float) and math.isfinite(baseline_fraction):sample['baseline_fraction']=round(max(0,min(1.2,baseline_fraction)),4)
+    return sample
 
-def layout(text,x,y,height=28,width=2.2,color='#28344b',max_width=900,samples=None):
+def _median(values):
+    n=len(values)
+    if not n:return None
+    middle=n//2
+    return values[middle] if n%2 else (values[middle-1]+values[middle])/2
+
+def _profile_reference_height(samples):
+    # Prose words define the normal text height; formulas and one-letter samples
+    # can be taller and must not shrink ordinary writing. One vote per label.
+    word_heights=[];all_heights=[]
+    for label,value in samples.items():
+        variants=value.get('variants',[value]) if isinstance(value,dict) else []
+        heights=sorted(v.get('natural_height') for v in variants if isinstance(v,dict) and type(v.get('natural_height')) in (int,float) and math.isfinite(v['natural_height']) and v['natural_height']>0)
+        if not heights: continue
+        label_height=_median(heights);all_heights.append(label_height)
+        letters=[c for c in label if c.isalpha()]
+        uppercase=sum(c.isupper() for c in letters)
+        if len(letters)>=2 and any(c.islower() for c in letters) and uppercase/len(letters)<=.34:
+            word_heights.append(label_height)
+    reference=word_heights or all_heights
+    reference.sort()
+    return _median(reference)
+
+def _variant(glyph,seed,token,offset):
+    if not isinstance(glyph,dict): raise ValueError('Повреждён образец почерка')
+    variants=glyph.get('variants')
+    if variants is None: return glyph
+    if not isinstance(variants,list) or not variants or any(not isinstance(v,dict) or 'paths' not in v or 'advance' not in v for v in variants):
+        raise ValueError('Повреждены варианты образца почерка')
+    digest=hashlib.sha256((seed+'\0'+token+'\0'+str(offset)).encode('utf-8')).digest()
+    return variants[int.from_bytes(digest[:8],'big')%len(variants)]
+
+def _seeded_random(seed,token,offset,part):
+    digest=hashlib.sha256((seed+'\0'+token+'\0'+str(offset)+'\0'+part).encode('utf-8')).digest()
+    return random.Random(int.from_bytes(digest[:8],'big'))
+
+def _letter_weight(character):
+    if character.isspace():return .58
+    if not character.isalnum():return .55
+    if character.lower() in 'iljtїі':return .72
+    if character.lower() in 'mwшщжф':return 1.28
+    return 1.0
+
+def _personal_variation(glyph,token,seed,offset,baseline_fraction):
+    """Apply subtle word-level deformation with continuous joins and stable retries."""
+    points=[p for path in glyph['paths'] for p in path]
+    if not points:return None
+    left=min(p[0] for p in points);right=max(p[0] for p in points);total=right-left
+    if total<1e-6:return None
+    characters=list(token) or [' ']
+    weights=[_letter_weight(c) for c in characters];weight_total=sum(weights)
+    edges=[left];acc=left
+    for weight in weights:
+        acc+=total*weight/weight_total;edges.append(acc)
+    rng=_seeded_random(seed,token,offset,'word')
+    global_x=.995+rng.random()*.01
+    global_y=.995+rng.random()*.01
+    baseline_shift=(rng.random()-.5)*.012
+    global_slant=(rng.random()-.5)*.016
+    widths=[];heights=[];vertical=[];slants=[]
+    for index in range(len(characters)):
+        rng=_seeded_random(seed,token,offset,'letter:'+str(index))
+        widths.append(global_x*(.975+rng.random()*.05))
+        heights.append(global_y*(.985+rng.random()*.03))
+        vertical.append((rng.random()-.5)*.024)
+        slants.append(global_slant+(rng.random()-.5)*.016)
+    edge_offsets=[0.0]
+    for index in range(len(characters)):
+        edge_offsets.append(edge_offsets[-1]+(edges[index+1]-edges[index])*(widths[index]-1))
+    advance_scale=1+edge_offsets[-1]/total
+    centers=[(edges[i]+edges[i+1])*.5 for i in range(len(characters))]
+
+    def blend(values,positions,x):
+        if len(values)==1 or x<=positions[0]:return values[0]
+        if x>=positions[-1]:return values[-1]
+        for index in range(len(positions)-1):
+            if x<=positions[index+1]:
+                t=(x-positions[index])/(positions[index+1]-positions[index])
+                t=t*t*(3-2*t)
+                return values[index]*(1-t)+values[index+1]*t
+        return values[-1]
+
+    def transform(point):
+        px,py=point[0],point[1]
+        warped_x=px+blend(edge_offsets,edges,px)
+        warped_y=baseline_fraction+(py-baseline_fraction)*blend(heights,centers,px)+blend(vertical,centers,px)
+        warped_x+=(baseline_fraction-py)*blend(slants,centers,px)
+        return warped_x,warped_y+baseline_shift,advance_scale
+
+    return transform,advance_scale
+
+def layout(text,x,y,height=28,width=2.2,color='#28344b',max_width=900,samples=None,variation_seed=''):
     if not text or len(text)>1500: raise ValueError('Текст должен содержать 1–1500 символов')
     if not all(math.isfinite(v) for v in [x,y,height,width,max_width]) or not 6<=height<=240 or max_width<height: raise ValueError('Некорректный размер надписи')
     if samples is not None and not samples: raise ValueError('Личный почерк ещё не содержит образцов')
-    x0=x;result=[];i=0
+    x0=x;result=[];i=0;space_scale=height;line_baseline=y+height
+    reference_height=_profile_reference_height(samples) if samples is not None else None
     while i<len(text):
-        if text[i]=='\n':x=x0;y+=height*1.65;i+=1;continue
-        if text[i].isspace():x+=height*.65;i+=1;continue
+        if text[i]=='\n':
+            line_rng=_seeded_random(variation_seed,text,i,'line') if samples is not None and variation_seed else None
+            line_gap=1.55+line_rng.random()*.2 if line_rng else 1.65
+            x=x0;y+=height*line_gap;line_baseline=y+height;i+=1;continue
+        if text[i].isspace():
+            gap_rng=_seeded_random(variation_seed,text[i],i,'space') if samples is not None and variation_seed else None
+            gap=.20+(gap_rng.random()*.08 if gap_rng else .04) if samples is not None else .65
+            x+=space_scale*gap;i+=1;continue
         if samples is None: token=text[i];glyph=builtin(token)
         else:
             token=next((k for k in sorted(samples,key=len,reverse=True) if text.startswith(k,i)),None)
             if token is None: raise ValueError('Для личного почерка нет образца: '+repr(text[i]))
-            glyph=samples[token]
-        advance=glyph['advance']*height
+            glyph=_variant(samples[token],variation_seed,token,i)
+        glyph_height=height
+        natural_height=glyph.get('natural_height') if samples is not None else None
+        if reference_height and type(natural_height) in (int,float) and math.isfinite(natural_height) and natural_height>0:
+            # Corpus examples may come from notebooks written at different canvas
+            # zoom levels. Keep their relative scale, but stop one sample from
+            # becoming nearly twice the neighboring words or shrinking to a speck.
+            glyph_height=height*max(.84,min(1.18,natural_height/reference_height))
+        advance=glyph['advance']*glyph_height
         if advance>max_width:raise ValueError('Образец шире строки; уменьшите высоту или увеличьте max_width')
-        if x>x0 and x+advance>x0+max_width:x=x0;y+=height*1.65
+        if x>x0 and x+advance>x0+max_width:x=x0;y+=height*1.65;line_baseline=y+height
+        glyph_y=y
+        if samples is not None:
+            baseline_fraction=glyph.get('baseline_fraction',1)
+            if type(baseline_fraction) not in (int,float) or not math.isfinite(baseline_fraction):baseline_fraction=1
+            baseline_fraction=max(0,min(1.2,baseline_fraction))
+            glyph_y=line_baseline-baseline_fraction*glyph_height
+            varied=_personal_variation(glyph,token,variation_seed,i,baseline_fraction) if variation_seed else None
+        else:variation=None
+        advance_scale=1
+        if samples is not None:
+            variation,advance_scale=varied if varied is not None else (None,1)
         for path in glyph['paths']:
             if len(result)>=2000 or sum(len(s['points']) for s in result)+len(path)>100000:raise ValueError('Надпись слишком большая; разделите её на части')
-            result.append({'tool':'fountain','color':color,'width':width,'points':[[round(x+p[0]*height,3),round(y+p[1]*height,3),_replay_pressure(p[2] if len(p)>2 else None)] for p in path]})
-        x+=advance;i+=len(token)
+            points=[]
+            for p in path:
+                if variation is not None:px,py,_=variation(p)
+                else:px,py=p[0],p[1]
+                points.append([round(x+px*glyph_height,3),round(glyph_y+py*glyph_height,3),_replay_pressure(p[2] if len(p)>2 else None)])
+            result.append({'tool':'fountain','color':color,'width':width,'points':points})
+        x+=advance*advance_scale;space_scale=glyph_height;i+=len(token)
     if not result or len(result)>2000 or sum(len(s['points']) for s in result)>100000:raise ValueError('Надпись слишком большая; разделите её на части')
     return result
