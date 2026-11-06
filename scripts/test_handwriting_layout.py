@@ -31,7 +31,18 @@ class HandwritingLayoutTests(unittest.TestCase):
         self.assertEqual(samples,before)
         self.assertTrue(all(math.isfinite(p[0]) and math.isfinite(p[1]) for p in first))
         self.assertTrue(all(first[i][0]>first[i-1][0] for i in range(1,len(first))))
-        self.assertLess(max(math.hypot(p[0]-plain[i][0],p[1]-plain[i][1]) for i,p in enumerate(first)),3)
+        self.assertLess(max(math.hypot(p[0]-plain[i][0],p[1]-plain[i][1]) for i,p in enumerate(first)),7)
+        width=lambda path:max(point[0] for point in path)-min(point[0] for point in path)
+        self.assertGreater(width(first),width(plain)*1.05)
+
+    def test_rounding_softens_a_corner_without_moving_stroke_endpoints(self):
+        path=[[0,0,.5],[1,0,.7],[1,1,.9]]
+        rounded=HANDWRITING._round_path(path)
+        self.assertGreater(len(rounded),len(path))
+        self.assertEqual(rounded[0],path[0])
+        self.assertEqual(rounded[-1],path[-1])
+        self.assertNotIn([1,0,.7],rounded)
+        self.assertTrue(all(.5<=point[2]<=.9 for point in rounded))
 
     def test_samples_from_different_canvas_scales_cannot_blow_up_or_shrink_a_word(self):
         path=[[[0,0,.8],[1,1,.8]]]

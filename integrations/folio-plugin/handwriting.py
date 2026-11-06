@@ -129,6 +129,31 @@ def _letter_weight(character):
     if character.lower() in 'mwшщжф':return 1.28
     return 1.0
 
+def _round_path(path):
+    """Replace sharp sampled vertices with short quadratic curves, keeping endpoints."""
+    if len(path)<3:return path
+    result=[path[0]]
+    for index in range(1,len(path)-1):
+        before,current,after=path[index-1:index+2]
+        dx1=current[0]-before[0];dy1=current[1]-before[1]
+        dx2=after[0]-current[0];dy2=after[1]-current[1]
+        length1=math.hypot(dx1,dy1);length2=math.hypot(dx2,dy2)
+        if length1<1e-6 or length2<1e-6:
+            result.append(current);continue
+        ux1,uy1=dx1/length1,dy1/length1;ux2,uy2=dx2/length2,dy2/length2
+        direction=max(-1,min(1,ux1*ux2+uy1*uy2))
+        if direction>.88:
+            result.append(current);continue
+        cut=min(length1,length2)*.22
+        entry=[current[0]-ux1*cut,current[1]-uy1*cut,current[2]+(before[2]-current[2])*(cut/length1)]
+        exit=[current[0]+ux2*cut,current[1]+uy2*cut,current[2]+(after[2]-current[2])*(cut/length2)]
+        result.append(entry)
+        for step in (.25,.5,.75,1):
+            inv=1-step
+            result.append([inv*inv*entry[axis]+2*inv*step*current[axis]+step*step*exit[axis] for axis in range(3)])
+    result.append(path[-1])
+    return result
+
 def _personal_variation(glyph,token,seed,offset,baseline_fraction):
     """Apply subtle word-level deformation with continuous joins and stable retries."""
     points=[p for path in glyph['paths'] for p in path]
@@ -141,14 +166,14 @@ def _personal_variation(glyph,token,seed,offset,baseline_fraction):
     for weight in weights:
         acc+=total*weight/weight_total;edges.append(acc)
     rng=_seeded_random(seed,token,offset,'word')
-    global_x=.995+rng.random()*.01
+    global_x=1.10+rng.random()*.05
     global_y=.995+rng.random()*.01
     baseline_shift=(rng.random()-.5)*.012
     global_slant=(rng.random()-.5)*.016
     widths=[];heights=[];vertical=[];slants=[]
     for index in range(len(characters)):
         rng=_seeded_random(seed,token,offset,'letter:'+str(index))
-        widths.append(global_x*(.975+rng.random()*.05))
+        widths.append(global_x*(.985+rng.random()*.03))
         heights.append(global_y*(.985+rng.random()*.03))
         vertical.append((rng.random()-.5)*.024)
         slants.append(global_slant+(rng.random()-.5)*.016)
@@ -221,9 +246,10 @@ def layout(text,x,y,height=28,width=2.2,color='#28344b',max_width=900,samples=No
         if samples is not None:
             variation,advance_scale=varied if varied is not None else (None,1)
         for path in glyph['paths']:
-            if len(result)>=2000 or sum(len(s['points']) for s in result)+len(path)>100000:raise ValueError('Надпись слишком большая; разделите её на части')
+            render_path=_round_path(path) if samples is not None else path
+            if len(result)>=2000 or sum(len(s['points']) for s in result)+len(render_path)>100000:raise ValueError('Надпись слишком большая; разделите её на части')
             points=[]
-            for p in path:
+            for p in render_path:
                 if variation is not None:px,py,_=variation(p)
                 else:px,py=p[0],p[1]
                 points.append([round(x+px*glyph_height,3),round(glyph_y+py*glyph_height,3),_replay_pressure(p[2] if len(p)>2 else None)])
