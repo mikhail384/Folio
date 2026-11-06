@@ -106,8 +106,9 @@ export function layout(text,x,y,height=28,width=2.2,color='#28344b',maxWidth=900
   }
   let glyphHeight=height;
   if(samples&&referenceHeight&&Number.isFinite(glyph.natural_height)&&glyph.natural_height>0){
-   const ratio=glyph.natural_height/referenceHeight;
-   glyphHeight=height*Math.max(.84,Math.min(1.18,ratio));
+   let ratio=glyph.natural_height/referenceHeight;
+   if([...token].length>1)ratio=Math.max(.84,Math.min(1.18,ratio));
+   glyphHeight=height*ratio;
   }
   const variation=samples&&variationSeed?personalVariation(glyph,token,variationSeed,i,1):null;
   const advance=glyph.advance*glyphHeight*(variation?.advanceScale??1);

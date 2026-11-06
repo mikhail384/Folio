@@ -200,10 +200,12 @@ def layout(text,x,y,height=28,width=2.2,color='#28344b',max_width=900,samples=No
         glyph_height=height
         natural_height=glyph.get('natural_height') if samples is not None else None
         if reference_height and type(natural_height) in (int,float) and math.isfinite(natural_height) and natural_height>0:
-            # Corpus examples may come from notebooks written at different canvas
-            # zoom levels. Keep their relative scale, but stop one sample from
-            # becoming nearly twice the neighboring words or shrinking to a speck.
-            glyph_height=height*max(.84,min(1.18,natural_height/reference_height))
+            ratio=natural_height/reference_height
+            if len(token)>1:
+                # Word examples may come from notebooks written at different canvas
+                # zoom levels. Preserve single-glyph geometry; bound only whole words.
+                ratio=max(.84,min(1.18,ratio))
+            glyph_height=height*ratio
         advance=glyph['advance']*glyph_height
         if advance>max_width:raise ValueError('Образец шире строки; уменьшите высоту или увеличьте max_width')
         if x>x0 and x+advance>x0+max_width:x=x0;y+=height*1.65;line_baseline=y+height
