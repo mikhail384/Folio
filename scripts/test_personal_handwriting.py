@@ -9,7 +9,7 @@ def main():
     output=ROOT/'build/personal-handwriting-tests'
     output.mkdir(parents=True,exist_ok=True)
     source=ROOT/'tests/PersonalHandwritingTests.java'
-    classpath=str(classes)+os.pathsep+str(SDK/'android.jar')
+    classpath=os.pathsep.join((str(classes),str(ROOT/'build/test-deps/json-20240303.jar'),str(SDK/'android.jar')))
     run(JDK/'bin'/('javac'+EXE),'-encoding','UTF-8','--release','8','-cp',classpath,'-d',output,source)
     result=subprocess.run([str(JDK/'bin'/('java'+EXE)),'-cp',str(output)+os.pathsep+classpath,'ru.folio.notes.PersonalHandwritingTests'],capture_output=True,text=True,encoding='utf-8',errors='replace')
     report=result.stdout+result.stderr

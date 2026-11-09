@@ -30,6 +30,14 @@ final class PersonalHandwriting {
         final float gap;final int examples;
         GapFit(float gap,int examples){this.gap=gap;this.examples=examples;}
     }
+    static final class TempoSample {
+        final float xHeightsPerSecond;final long penUpPauseMs;
+        TempoSample(float rate,long pause){xHeightsPerSecond=rate;penUpPauseMs=pause;}
+    }
+    private static final class TempoFit {
+        final float xHeightsPerSecond;final long penUpPauseMs;final int examples;
+        TempoFit(float rate,long pause,int count){xHeightsPerSecond=rate;penUpPauseMs=pause;examples=count;}
+    }
     private static final class Glyph {
         final int codePoint;final ArrayList<Ink.Stroke> paths;final float minX,minY,maxX,maxY,baseline,width,nominalHeight;
         final int entryPath,exitPath;final boolean entryReady,exitReady;
@@ -61,13 +69,17 @@ final class PersonalHandwriting {
         final float letterGap;
         final int spacingExamples;
         final int variants;
-        Model(HashMap<Integer,ArrayList<Glyph>> glyphs,float xHeight,float letterGap,int spacingExamples,int variants){this.glyphs=glyphs;this.xHeight=xHeight;this.letterGap=letterGap;this.spacingExamples=spacingExamples;this.variants=variants;}
+        final float xHeightsPerSecond;
+        final long penUpPauseMs;
+        final int tempoExamples;
+        Model(HashMap<Integer,ArrayList<Glyph>> glyphs,float xHeight,float letterGap,int spacingExamples,int variants,float tempo,long pause,int tempoExamples){this.glyphs=glyphs;this.xHeight=xHeight;this.letterGap=letterGap;this.spacingExamples=spacingExamples;this.variants=variants;this.xHeightsPerSecond=tempo;this.penUpPauseMs=pause;this.tempoExamples=tempoExamples;}
         boolean empty(){return glyphs.isEmpty()||xHeight<1;}
         String summary(){
             int ru=0,ruTotal=66,latin=0,latinTotal=52,digits=0;for(int cp:glyphs.keySet()){if(cp>='А'&&cp<='я'||cp=='Ё'||cp=='ё')ru++;if(cp>='A'&&cp<='Z'||cp>='a'&&cp<='z')latin++;if(cp>='0'&&cp<='9')digits++;}
             String result="Сохранено "+variants+" вариантов · "+glyphs.size()+" символов. Русские буквы: "+ru+"/"+ruTotal+"; латиница: "+latin+"/"+latinTotal+"; цифры: "+digits+"/10."+(spacingExamples>0?" Интервалы настроены по "+spacingExamples+" вашим словам.":" Интервалы пока стандартные.");
-            String missing=missingFor("абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,!?;:-–—()[]{}'\"«»+−=×÷*/^_²³₀₁₂₃→√π∞≈≤≥≠∫%");
-            return missing.isEmpty()?result+" Базовый набор готов.":result+" Пока нет: "+missing+".";
+            String missing=missingFor("абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,!?;:-–—()[]{}'\"«»"+HandwritingTraining.MATH_SYMBOLS);
+            String tempo=tempoExamples>0?" Данные темпа: "+String.format(Locale.ROOT,"%.1f",xHeightsPerSecond)+" высоты строки/с; пауза "+penUpPauseMs+" мс по "+tempoExamples+" образцам. Вывод пока без анимации.":" Темп пока не откалиброван; вывод штрихов мгновенный.";
+            return (missing.isEmpty()?result+" Базовый набор готов.":result+" Пока нет: "+missing+".")+tempo;
         }
         String missingFor(String text){LinkedHashSet<String> missing=new LinkedHashSet<>();for(int i=0;i<text.length();){int cp=text.codePointAt(i);i+=Character.charCount(cp);if(Character.isWhitespace(cp))continue;if(!glyphs.containsKey(cp))missing.add(new String(Character.toChars(cp)));}return PersonalHandwriting.join(missing,24);}
 
@@ -114,7 +126,7 @@ final class PersonalHandwriting {
         }
 
         private static ArrayList<String> words(String line){ArrayList<String> result=new ArrayList<>();StringBuilder word=new StringBuilder();for(int i=0;i<line.length();){int cp=line.codePointAt(i);i+=Character.charCount(cp);if(Character.isWhitespace(cp)){if(word.length()>0){result.add(word.toString());word.setLength(0);}if(cp=='\t')result.add(" ");else if(!result.isEmpty()&&!result.get(result.size()-1).equals(" "))result.add(" ");}else word.appendCodePoint(cp);}if(word.length()>0)result.add(word.toString());return result;}
-        private static boolean formula(String line){if(line.matches(".*[=+×÷→√^_∫≈≤≥≠²³₀₁₂₃].*"))return true;if(line.matches(".*[A-Za-z0-9][−*/-][A-Za-z0-9].*" )&&line.matches(".*(?:[0-9]|[A-Z].*[A-Z]).*"))return true;if(line.matches(".*[A-Z][a-z][A-Z].*"))return true;return line.contains(" - ")||line.contains(" − ");}
+        private static boolean formula(String line){if(line.codePoints().anyMatch(cp->HandwritingTraining.MATH_SYMBOLS.indexOf(cp)>=0))return true;if(line.matches(".*[A-Za-z0-9][−*/-][A-Za-z0-9].*" )&&line.matches(".*(?:[0-9]|[A-Z].*[A-Z]).*"))return true;if(line.matches(".*[A-Z][a-z][A-Z].*"))return true;return line.contains(" - ")||line.contains(" − ");}
         private static ArrayList<Ink.Pt> curve(List<Ink.Pt> source,Glyph glyph,float x,float baseline,float scale,float shear,float height){
             ArrayList<Ink.Pt> smooth=new ArrayList<>(source.size());for(int i=0;i<source.size();i++){Ink.Pt p=source.get(i);float sx=p.x,sy=p.y,pressure=p.p;if(i>0&&i<source.size()-1){Ink.Pt before=source.get(i-1),after=source.get(i+1);sx=p.x*.72f+(before.x+after.x)*.14f;sy=p.y*.72f+(before.y+after.y)*.14f;pressure=p.p*.68f+(before.p+after.p)*.16f;}smooth.add(new Ink.Pt(sx,sy,pressure,p.tilt,p.angle,p.azimuth));}
             ArrayList<Ink.Pt> out=new ArrayList<>();if(smooth.size()==1){Ink.Pt p=smooth.get(0);out.add(place(p,glyph,x,baseline,scale,shear));return out;}
@@ -125,9 +137,10 @@ final class PersonalHandwriting {
     }
 
     static Model load(MainActivity activity){
-        HashMap<Integer,ArrayList<Glyph>> map=new HashMap<>();HashSet<String> seen=new HashSet<>();HashSet<String> seenWords=new HashSet<>();ArrayList<Raw> raw=new ArrayList<>();ArrayList<WordRaw> words=new ArrayList<>();File root=new File(activity.getFilesDir(),"ai-training-corpus");
+        HashMap<Integer,ArrayList<Glyph>> map=new HashMap<>();HashSet<String> seen=new HashSet<>();HashSet<String> seenWords=new HashSet<>(),seenTimed=new HashSet<>();ArrayList<Raw> raw=new ArrayList<>();ArrayList<WordRaw> words=new ArrayList<>();ArrayList<JSONArray> timedExamples=new ArrayList<>();File root=new File(activity.getFilesDir(),"ai-training-corpus");
         File[] folders=root.listFiles(File::isDirectory);int examined=0;long bytesRead=0;
         if(folders!=null){Arrays.sort(folders,Comparator.comparing(File::getName));for(File folder:folders){String doc=folder.getName();if(!doc.equals(AiCorpusStore.CALIBRATION)&&!AiLearningPermissions.allowed(activity.prefs,doc))continue;File[] files=folder.listFiles((dir,name)->name.matches("[a-f0-9]{32}\\.json"));if(files==null)continue;Arrays.sort(files,Comparator.comparing(File::getName));for(File file:files){if(++examined>MAX_CORPUS_FILES||bytesRead>24L*1024*1024)break;if(file.length()<2||file.length()>AiCorpusStore.MAX_ITEM)continue;try{String json=read(file);bytesRead+=json.length();JSONObject item=new JSONObject(json);if(!"folio-training-example-v1".equals(item.optString("format")))continue;String source=item.optString("source");if(!source.equals("calibration")&&!source.equals("ocr"))continue;String label=item.optString("text");int count=label.codePointCount(0,label.length());JSONArray strokes=item.optJSONArray("strokes");if(strokes==null||strokes.length()==0)continue;
+                    if(count<=32&&(doc.equals(AiCorpusStore.CALIBRATION)||source.equals("ocr")))addTimed(timedExamples,seenTimed,label,strokes);
                     if(count==1){int cp=label.codePointAt(0);float base=doc.equals(AiCorpusStore.CALIBRATION)?CALIBRATION_BASELINE:Float.NaN;String pageKey=item.optString("document_id",doc)+":"+item.optString("page_id","");raw.add(new Raw(cp,strokes,base,pageKey,source));}
                     else if(count<=32&&(doc.equals(AiCorpusStore.CALIBRATION)||source.equals("ocr"))&&"text".equals(item.optString("kind","text")))addWord(words,seenWords,label,strokes);
                 }catch(Exception ignored){}}
@@ -138,9 +151,31 @@ final class PersonalHandwriting {
         HashSet<Integer> calibrated=new HashSet<>(map.keySet());
         for(Raw item:raw)if(item.source.equals("ocr")&&!calibrated.contains(item.codePoint)){String identity=item.codePoint+":"+item.strokes.toString();if(!seen.add(identity))continue;add(map,item.codePoint,item.strokes,pageBaseline(item,pageBases));}
         // Keep older on-device samples usable if a previous app version stored them before the append-only corpus existed.
-        if(activity.handwritingTraining!=null)for(HandwritingTraining.Group group:HandwritingTraining.GROUPS)for(String label:group.prompts){int count=label.codePointCount(0,label.length());try{JSONObject sample=activity.handwritingTraining.info(label);if(sample==null)continue;JSONArray strokes=sample.optJSONArray("strokes");if(strokes==null||strokes.length()==0)continue;if(count==1){int cp=label.codePointAt(0);if(!map.containsKey(cp))add(map,cp,strokes,CALIBRATION_BASELINE);}else addWord(words,seenWords,label,strokes);}catch(Exception ignored){}}
+        if(activity.handwritingTraining!=null)for(HandwritingTraining.Group group:HandwritingTraining.GROUPS)for(String label:group.prompts){int count=label.codePointCount(0,label.length());try{JSONObject sample=activity.handwritingTraining.info(label);if(sample==null)continue;JSONArray strokes=sample.optJSONArray("strokes");if(strokes==null||strokes.length()==0)continue;addTimed(timedExamples,seenTimed,label,strokes);if(count==1){int cp=label.codePointAt(0);if(!map.containsKey(cp))add(map,cp,strokes,CALIBRATION_BASELINE);}else addWord(words,seenWords,label,strokes);}catch(Exception ignored){}}
         ArrayList<Float> xh=new ArrayList<>();for(Map.Entry<Integer,ArrayList<Glyph>> e:map.entrySet())if(isXHeight(e.getKey()))for(Glyph g:e.getValue()){float h=g.baseline-g.minY;if(h>2&&h<400)xh.add(h);}
-        Collections.sort(xh);float height=xh.isEmpty()?0:xh.get(xh.size()/2);GapFit spacing=learnLetterGap(map,height,words);int variants=0;for(ArrayList<Glyph> list:map.values())variants+=list.size();return new Model(map,height,spacing.gap,spacing.examples,variants);
+        Collections.sort(xh);float height=xh.isEmpty()?0:xh.get(xh.size()/2);GapFit spacing=learnLetterGap(map,height,words);int variants=0;for(ArrayList<Glyph> list:map.values())variants+=list.size();TempoFit tempo=learnTempo(timedExamples,height);return new Model(map,height,spacing.gap,spacing.examples,variants,tempo.xHeightsPerSecond,tempo.penUpPauseMs,tempo.examples);
+    }
+    private static void addTimed(List<JSONArray> out,Set<String> seen,String label,JSONArray strokes){String id=label+":"+strokes.toString();if(seen.add(id))out.add(strokes);}
+    static TempoSample tempoSample(JSONArray strokes,float xHeight)throws Exception{
+        if(strokes==null||strokes.length()==0||!Float.isFinite(xHeight)||xHeight<1)return null;
+        double distance=0;long activeMs=0,previousLast=-1;ArrayList<Long> pauses=new ArrayList<>();
+        for(int i=0;i<strokes.length();i++){
+            JSONObject stroke=strokes.getJSONObject(i);JSONArray points=stroke.optJSONArray("points"),times=stroke.optJSONArray("pointTimesMs");
+            if(points==null||points.length()<10||points.length()%5!=0||times==null||times.length()!=points.length()/5)return null;
+            long first=times.getLong(0),last=first;
+            for(int p=1;p<times.length();p++){long time=times.getLong(p);if(time<last||time<0||time>HandwritingTraining.MAX_TIMED_SAMPLE_MS)return null;last=time;}
+            if(previousLast>=0){long pause=first-previousLast;if(pause<0)return null;if(pause<=1500)pauses.add(pause);}
+            previousLast=last;activeMs+=last-first;
+            for(int p=5;p<points.length();p+=5)distance+=Ink.dist((float)points.getDouble(p-5),(float)points.getDouble(p-4),(float)points.getDouble(p),(float)points.getDouble(p+1));
+        }
+        if(activeMs<10||distance<xHeight*.1)return null;
+        double rate=distance/xHeight/(activeMs/1000.0);if(!Double.isFinite(rate)||rate<.1||rate>50)return null;
+        Collections.sort(pauses);long pause=pauses.isEmpty()?90:pauses.get(pauses.size()/2);
+        return new TempoSample((float)rate,pause);
+    }
+    private static TempoFit learnTempo(List<JSONArray> examples,float xHeight){
+        ArrayList<Float> rates=new ArrayList<>();ArrayList<Long> pauses=new ArrayList<>();for(JSONArray strokes:examples)try{TempoSample sample=tempoSample(strokes,xHeight);if(sample!=null){rates.add(sample.xHeightsPerSecond);pauses.add(sample.penUpPauseMs);}}catch(Exception ignored){}
+        if(rates.isEmpty())return new TempoFit(0,90,0);Collections.sort(rates);Collections.sort(pauses);return new TempoFit(rates.get(rates.size()/2),pauses.get(pauses.size()/2),rates.size());
     }
     private static String read(File file)throws IOException{try(InputStream in=new FileInputStream(file);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1){out.write(buffer,0,n);if(out.size()>AiCorpusStore.MAX_ITEM)throw new IOException("oversize sample");}return out.toString("UTF-8");}}
     private static Map<String,ArrayList<Float>> pageBaselines(List<Raw> raw){

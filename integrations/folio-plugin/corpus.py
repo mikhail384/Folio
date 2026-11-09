@@ -14,6 +14,7 @@ import uuid
 
 MAX_STROKES=128
 MAX_POINTS=16000
+MAX_SAMPLE_DURATION_MS=10*60*1000
 
 
 def prepare(text,strokes,kind='unknown',source='manual',document_id='',page_id=''):
@@ -23,7 +24,7 @@ def prepare(text,strokes,kind='unknown',source='manual',document_id='',page_id='
     if kind not in ('text','formula','unknown') or source not in ('manual','ocr-reviewed'):raise ValueError('Недопустимый тип образца')
     if any(not isinstance(v,str) or v and not re.fullmatch(r'[A-Za-z0-9_-]{1,80}',v) for v in (document_id,page_id)):raise ValueError('Некорректный источник образца')
     if not isinstance(strokes,list) or not 1<=len(strokes)<=MAX_STROKES:raise ValueError('Выберите написанные пером штрихи')
-    clean=[];count=0
+    clean=[];count=0;last_timed_point=-1
     for stroke in strokes:
         if not isinstance(stroke,dict) or str(stroke.get('action','')).startswith('ai:'):raise ValueError('ИИ-штрихи нельзя использовать для обучения')
         if stroke.get('tool','pen') not in ('pen','fountain','brush','pencil') or stroke.get('cuts'):raise ValueError('Нужны нестёртые рукописные штрихи')
@@ -36,7 +37,18 @@ def prepare(text,strokes,kind='unknown',source='manual',document_id='',page_id='
             x,y,p,tilt,roll=values[i:i+5]
             if any(type(v) not in (int,float) or not math.isfinite(v) for v in (x,y,p,tilt,roll)) or abs(x)>1e7 or abs(y)>1e7 or p<0 or p>2:raise ValueError('Повреждены точки образца')
             pts.extend([x,y,p,tilt,roll])
-        clean.append({'points':pts})
+        item={'points':pts}
+        times=stroke.get('pointTimesMs')
+        if times is not None:
+            if not isinstance(times,list) or len(times)!=len(values)//5:raise ValueError('Повреждён темп образца')
+            clean_times=[]
+            for value in times:
+                if type(value) not in (int,float) or not math.isfinite(value) or value!=int(value):raise ValueError('Повреждён темп образца')
+                value=int(value)
+                if value<last_timed_point or value<0 or value>MAX_SAMPLE_DURATION_MS:raise ValueError('Повреждён темп образца')
+                clean_times.append(value);last_timed_point=value
+            item['pointTimesMs']=clean_times
+        clean.append(item)
     return {'format':'folio-training-example-v1','text':text,'kind':kind,'source':source,'document_id':document_id,'page_id':page_id,'strokes':clean}
 
 

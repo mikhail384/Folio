@@ -4,6 +4,7 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from mcp import ClientSession,StdioServerParameters
 from mcp.client.stdio import stdio_client
+from corpus import prepare
 from handwriting import layout,sample_from_selection
 from server import _layout_validation
 
@@ -45,6 +46,14 @@ class Phone(BaseHTTPRequestHandler):
         data=json.dumps(state).encode();self.send_response(status);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
 
 class HandwritingTests(unittest.TestCase):
+    def test_corpus_preserves_valid_stylus_timing_and_rejects_corrupt_timing(self):
+        strokes=[{'points':[0,0,.5,0,0,10,20,.7,0,0],'pointTimesMs':[0,37]}]
+        saved=prepare('∑',strokes,kind='formula')
+        self.assertEqual(saved['strokes'][0]['pointTimesMs'],[0,37])
+        for bad in ([0],[37,0],[0,600001]):
+            with self.subTest(times=bad),self.assertRaises(ValueError):
+                prepare('∑',[{'points':strokes[0]['points'],'pointTimesMs':bad}],kind='formula')
+
     def test_layout_validation_checks_height_spacing_and_naturalness(self):
         report={'line_count':1,'bounds':[0,0,52,20],'tokens':[
             {'text':'первое','line':0,'word':1,'bounds':[0,0,20,19]},

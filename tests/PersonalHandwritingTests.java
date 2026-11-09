@@ -3,6 +3,7 @@ package ru.folio.notes;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import org.json.JSONArray;
 
 public final class PersonalHandwritingTests {
     private static int checks;
@@ -47,6 +48,9 @@ public final class PersonalHandwritingTests {
         check(Math.abs(tight+2.4f)<.001f,"tight spacing is bounded before it can fold letters over each other");
         check(Float.isNaN(PersonalHandwriting.letterGapSample(300,100,3,20)),"implausible word-width observations are ignored");
         check(Float.isNaN(PersonalHandwriting.letterGapSample(90,80,2,20)),"a two-letter word cannot destabilize spacing calibration");
+        PersonalHandwriting.TempoSample tempo=PersonalHandwriting.tempoSample(new JSONArray("[{points:[0,0,0.5,0,0,20,0,0.6,0,0],pointTimesMs:[0,250]},{points:[20,0,0.5,0,0,40,0,0.6,0,0],pointTimesMs:[350,600]}]"),20);
+        check(tempo!=null&&Math.abs(tempo.xHeightsPerSecond-4)<.001f&&tempo.penUpPauseMs==100,"timed samples estimate normalized writing speed and pen-up pause");
+        check(PersonalHandwriting.tempoSample(new JSONArray("[{points:[0,0,1,0,0,20,0,1,0,0]}]"),20)==null,"untimed legacy samples remain usable without fabricating a speed profile");
         check(AgentTextCheck.exact("Увеличивается.","увеличивается"),"transcription ignores case and punctuation");
         check(!AgentTextCheck.exact("увеличивается","увюличивается"),"transcription detects е/ю substitution");
         check(AgentTextCheck.readable("Сегодня хорошая погода","Сегодня хорошая погода",99),"high-confidence matching OCR is readable");

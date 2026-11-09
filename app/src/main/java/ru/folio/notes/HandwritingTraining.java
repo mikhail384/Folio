@@ -10,23 +10,37 @@ import org.json.*;
 final class HandwritingTraining {
     static final String PROFILE="my-handwriting";
     static final int MAX_BYTES=8*1024*1024,MAX_POINTS=16000,MAX_STROKES=128;
+    static final long MAX_TIMED_SAMPLE_MS=10*60*1000L;
+    static final String MATH_OPERATORS="+−±×·⋅÷∕/=≠≈≡≅∝<≤>≥≪≫*^_%";
+    static final String MATH_LOGIC="∈∉∋∌⊂⊆⊃⊇∪∩∅∧∨¬∀∃";
+    static final String MATH_ANALYSIS="√∛∞π∑∏∫∬∭∮∂∇ΔδαβγθλμρσφωΩ";
+    static final String MATH_SUPERSCRIPTS="⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ";
+    static final String MATH_SUBSCRIPTS="₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎";
+    static final String MATH_GEOMETRY="°′″∠⊥∥→←↔⇒⇔↦∴∵|‖";
+    static final String MATH_SYMBOLS=MATH_OPERATORS+MATH_LOGIC+MATH_ANALYSIS+MATH_SUPERSCRIPTS+MATH_SUBSCRIPTS+MATH_GEOMETRY;
     static final class Group {
-        final String title,description;final String[] prompts;
-        Group(String t,String d,String... p){title=t;description=d;prompts=p;}
+        final String title,description,kind;final String[] prompts;
+        Group(String t,String d,String... p){this(t,d,false,p);}
+        Group(String t,String d,boolean formula,String... p){title=t;description=d;kind=formula?"formula":"text";prompts=p;}
     }
-    private static String[] chars(String s){ArrayList<String> out=new ArrayList<>();for(int i=0;i<s.length();i++)out.add(String.valueOf(s.charAt(i)));return out.toArray(new String[0]);}
+    private static String[] chars(String s){ArrayList<String> out=new ArrayList<>();for(int i=0;i<s.length();){int cp=s.codePointAt(i);out.add(new String(Character.toChars(cp)));i+=Character.charCount(cp);}return out.toArray(new String[0]);}
     static final Group[] GROUPS={
         new Group("Связные строки","Пишите обычным почерком, соединяя буквы так, как вы привыкли.","Съешь же ещё этих мягких","французских булок и выпей чаю","В чащах юга жил бы цитрус?","Жёлтый ёж нашёл ключ.","Мы изучаем физику и химию."),
         new Group("Слова","Напишите знакомые слова своим обычным почерком.","Привет","спасибо","тетрадь","идея"),
         new Group("Предложения","Фраза сохраняется целиком, вместе с соединениями букв.","Я записываю свои мысли.","Сегодня хороший день.","Каждая идея важна."),
-        new Group("Математика","Можно писать привычные вам выражения и обозначения.","2 + 2 = 4","x² + y² = r²","f(x) = x² + 1"),
-        new Group("Физика","Сохраните привычное написание физических формул.","F = ma","E = mc²","v = s / t","U = IR"),
-        new Group("Химия","Сохраните формулы и уравнения своими штрихами.","H₂O","NaCl","2H₂ + O₂ → 2H₂O","CO₂ + H₂O → H₂CO₃"),
+        new Group("Математика","Можно писать привычные вам выражения и обозначения.",true,"2 + 2 = 4","x² + y² = r²","f(x) = x² + 1"),
+        new Group("Физика","Сохраните привычное написание физических формул.",true,"F = ma","E = mc²","v = s / t","U = IR"),
+        new Group("Химия","Сохраните формулы и уравнения своими штрихами.",true,"H₂O","NaCl","2H₂ + O₂ → 2H₂O","CO₂ + H₂O → H₂CO₃"),
         new Group("Русские буквы","Отдельные буквы нужны, чтобы составлять новые слова.",chars("абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ")),
         new Group("Латиница","Отдельные буквы пригодятся в формулах.",chars("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")),
         new Group("Цифры","Добавьте цифры для новых выражений.",chars("0123456789")),
         new Group("Пунктуация","Пишите по одному знаку; для точки достаточно лёгкого короткого касания.",chars(".,!?;:-–—()[]{}'\"«»")),
-        new Group("Знаки формул","Пишите каждый знак отдельно, как в своих формулах.",chars("+−=×÷*/^_²³₀₁₂₃→√π∞≈≤≥≠∫%"))
+        new Group("Операции и сравнения","Пишите каждый знак отдельно, привычным движением пера.",true,chars(MATH_OPERATORS)),
+        new Group("Множества и логика","Образцы кванторов, множеств и логических операций.",true,chars(MATH_LOGIC)),
+        new Group("Анализ и греческие буквы","Корни, пределы, суммы, интегралы и греческие обозначения.",true,chars(MATH_ANALYSIS)),
+        new Group("Степени и индексы","Верхние и нижние цифры и знаки для индексов.",true,chars(MATH_SUPERSCRIPTS+MATH_SUBSCRIPTS)),
+        new Group("Геометрические знаки","Углы, параллельность, направления и геометрические символы.",true,chars(MATH_GEOMETRY)),
+        new Group("Примеры формул","Пишите целиком: здесь сохраняются интервалы и характерные связки.",true,"a/b = c/d","√(x² + 1)","∫₀¹ x² dx","Σᵢ₌₁ⁿ i","α + β = γ","|x| ≤ 1","∠ABC = 90°","lim x→∞")
     };
     final File file;private JSONObject root;
     HandwritingTraining(File file){this.file=file;}
@@ -54,8 +68,9 @@ final class HandwritingTraining {
     static void validate(JSONArray strokes)throws Exception{validate(strokes,null);}
     static void validate(JSONArray strokes,String label)throws Exception{
         if(strokes==null||strokes.length()<1||strokes.length()>MAX_STROKES)throw new IllegalArgumentException("Напишите образец пером");
-        int count=0;double minX=Double.MAX_VALUE,minY=minX,maxX=-minX,maxY=-minX;
+        int count=0;long lastTimedPoint=-1;double minX=Double.MAX_VALUE,minY=minX,maxX=-minX,maxY=-minX;
         for(int i=0;i<strokes.length();i++){JSONObject stroke=strokes.getJSONObject(i);JSONArray p=stroke.getJSONArray("points");if(p.length()<5||p.length()%5!=0)throw new IllegalArgumentException("Повреждён штрих");count+=p.length()/5;if(count>MAX_POINTS)throw new IllegalArgumentException("Образец слишком большой");
+            JSONArray times=stroke.optJSONArray("pointTimesMs");if(times!=null){if(times.length()!=p.length()/5)throw new IllegalArgumentException("Повреждён темп образца");for(int t=0;t<times.length();t++){double raw=times.getDouble(t);long ms=Math.round(raw);if(!Double.isFinite(raw)||Math.abs(raw-ms)>.001||ms<0||ms>MAX_TIMED_SAMPLE_MS||ms<lastTimedPoint)throw new IllegalArgumentException("Повреждён темп образца");lastTimedPoint=ms;}}
             for(int j=0;j<p.length();j+=5){double x=p.getDouble(j),y=p.getDouble(j+1),pressure=p.getDouble(j+2),tilt=p.getDouble(j+3),roll=p.getDouble(j+4);if(!Double.isFinite(x)||!Double.isFinite(y)||Math.abs(x)>10000000||Math.abs(y)>10000000||!Double.isFinite(pressure)||!Double.isFinite(tilt)||!Double.isFinite(roll)||pressure<0||pressure>2)throw new IllegalArgumentException("Повреждены точки образца");minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);}
         }
         double width=maxX-minX,height=maxY-minY;if((height<1||width<.1)&&!isSmallSymbol(label))throw new IllegalArgumentException("Напишите образец чуть крупнее");
