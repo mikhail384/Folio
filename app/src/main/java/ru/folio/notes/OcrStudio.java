@@ -10,7 +10,8 @@ import java.util.concurrent.*;
 
 /** Bundled Russian/English OCR; images never leave the device. */
 final class OcrStudio {
-    final MainActivity a;final ExecutorService worker=Executors.newSingleThreadExecutor();boolean busy;
+    static final Object OCR_LOCK=new Object();
+    final MainActivity a;final ExecutorService worker=Executors.newSingleThreadExecutor();boolean busy;private TessBaseAPI verificationTess;
     OcrStudio(MainActivity a){this.a=a;}
     String recognize(Bitmap image)throws Exception{return recognize(a,image);}
     private static synchronized File prepare(Context context)throws Exception{File root=new File(context.getFilesDir(),"ocr"),data=new File(root,"tessdata");if(!data.isDirectory()&&!data.mkdirs())throw new IOException("Не удалось создать каталог моделей");
@@ -18,7 +19,11 @@ final class OcrStudio {
         return root;
     }
     static TessBaseAPI create(Context context,int mode)throws Exception{File root=prepare(context);TessBaseAPI tess=new TessBaseAPI();try{if(!tess.init(root.toString(),"rus+eng"))throw new IOException("Не удалось загрузить модели распознавания");tess.setPageSegMode(mode);return tess;}catch(Exception e){tess.recycle();throw e;}}
-    static String recognize(Context context,Bitmap image)throws Exception{TessBaseAPI tess=create(context,TessBaseAPI.PageSegMode.PSM_AUTO);try{tess.setImage(image);return tess.getUTF8Text().trim();}finally{tess.recycle();}}
+    static final class Recognition {final String text;final int confidence;Recognition(String text,int confidence){this.text=text;this.confidence=confidence;}}
+    static String recognize(Context context,Bitmap image)throws Exception{return recognizeDetailed(context,image,TessBaseAPI.PageSegMode.PSM_AUTO).text;}
+    static Recognition recognizeDetailed(Context context,Bitmap image,int mode)throws Exception{synchronized(OCR_LOCK){TessBaseAPI tess=create(context,mode);try{tess.setImage(image);String value=tess.getUTF8Text();return new Recognition(value==null?"":value.trim(),tess.meanConfidence());}finally{tess.recycle();}}}
+    Recognition recognizeForVerification(Bitmap image)throws Exception{synchronized(OCR_LOCK){if(verificationTess==null)verificationTess=create(a,TessBaseAPI.PageSegMode.PSM_AUTO);verificationTess.setImage(image);try{String value=verificationTess.getUTF8Text();return new Recognition(value==null?"":value.trim(),verificationTess.meanConfidence());}finally{verificationTess.clear();}}}
+    void closeVerification(){synchronized(OCR_LOCK){if(verificationTess!=null){verificationTess.recycle();verificationTess=null;}}}
     Studio.Sheet show(){if(a.canvas==null||busy)return null;LinearLayout box=a.column();Studio.addCard(a,box,Studio.row(a,"text","Распознать текст",a.canvas.selection.isEmpty()?"Видимая область страницы · русский и английский":"Выделенная область · русский и английский",this::start));box.addView(a.text("Работает без интернета. Лучше всего распознаёт печатный текст; рукописный результат может потребовать исправления.",12,Studio.MUTED,false));return new Studio.Builder(a).anchor(a.editorHeader).setTitle("Текст из изображения").setView(box).setPositiveButton("Закрыть",null).show();}
     void start(){if(a.canvas==null||busy)return;a.canvas.finishGesture(false);NotesView view=a.canvas;Ink.Page page=view.page.copy();Ink.Doc owner=a.current;float[] b=view.selection.isEmpty()?new float[]{view.px(0),view.py(0),view.px(view.getWidth()),view.py(view.getHeight())}:view.selectionBounds();float scale=Math.min(2,2400f/Math.max(b[2]-b[0],b[3]-b[1]));if(scale<=0)return;busy=true;Studio.Sheet progress=Studio.busy(a,"Распознавание","Русский и английский · на устройстве…");
         worker.execute(()->{Bitmap image=null,bg=null;try{image=Bitmap.createBitmap(Math.max(1,Math.round((b[2]-b[0])*scale)),Math.max(1,Math.round((b[3]-b[1])*scale)),Bitmap.Config.ARGB_8888);Canvas c=new Canvas(image);c.drawColor(Color.WHITE);c.scale(scale,scale);c.translate(-b[0],-b[1]);if(!page.background.isEmpty())bg=a.store.bitmap(page.background,2400);InkRenderer.region(c,page,bg,page.strokes,Collections.emptySet(),b[0],b[1],b[2],b[3],scale);String text=recognize(image);a.runOnUiThread(()->{busy=false;progress.dismiss();if(!a.isDestroyed())result(text,owner,page.id,b[0],b[1]);});}catch(Exception|OutOfMemoryError|LinkageError e){a.runOnUiThread(()->{busy=false;progress.dismiss();if(!a.isDestroyed())a.error("Распознавание",e);});}finally{if(image!=null)image.recycle();if(bg!=null)bg.recycle();}});

@@ -46,6 +46,10 @@ final class AgentBridge {
         byte[] data=body.getBytes(StandardCharsets.UTF_8);OutputStream out=socket.getOutputStream();out.write(("HTTP/1.1 "+code+" Result\r\nContent-Type: application/json; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: "+data.length+"\r\n\r\n").getBytes(StandardCharsets.US_ASCII));out.write(data);out.flush();
     }catch(IOException ignored){} }
     static final class Fault extends Exception{final int code;Fault(int code,String message){super(message);this.code=code;}}
+    static final class TextSnapshot {
+        final String document,page,revision,operation,expected;final float targetHeight,left,top,right,bottom,inkHeight;final ArrayList<Ink.Stroke> strokes;
+        TextSnapshot(String document,String page,String revision,String operation,String expected,float targetHeight,float left,float top,float right,float bottom,float inkHeight,ArrayList<Ink.Stroke> strokes){this.document=document;this.page=page;this.revision=revision;this.operation=operation;this.expected=expected;this.targetHeight=targetHeight;this.left=left;this.top=top;this.right=right;this.bottom=bottom;this.inkHeight=inkHeight;this.strokes=strokes;}
+    }
     <T>T onUi(Callable<T> action)throws Exception{
         FutureTask<T> task=new FutureTask<>(action);a.ui.post(task);
         try{return task.get(15,TimeUnit.SECONDS);}catch(TimeoutException timeout){task.cancel(false);throw new Fault(503,"Canvas busy; read its state before retrying");}
@@ -57,7 +61,42 @@ final class AgentBridge {
             Callable<JSONObject> read=onUi(()->{ready(generation);idle();return new AgentNotebook(a).trainingExamples(request,this,generation);});
             return read.call();
         }
+        if(route.equals("/v1/verify_text")){
+            TextSnapshot snapshot=onUi(()->captureText(request,generation));
+            return verifyText(snapshot);
+        }
         return onUi(()->handle(route,request,generation));
+    }
+    TextSnapshot captureText(JSONObject request,int generation)throws Exception{
+        ready(generation);idle();NotesView view=a.canvas;Ink.Page page=view.page;
+        if(!request.optString("document_id").equals(a.current.id)||!request.optString("page_id").equals(page.id))throw new Fault(409,"The open document/page changed; read canvas again");
+        if(!request.optString("revision").equals(revision()))throw new Fault(409,"Canvas changed before text verification; read it again");
+        String operation=request.optString("operation_id"),expected=request.optString("expected_text");double target=request.optDouble("target_height",28);
+        if(!operation.matches("[A-Za-z0-9_-]{8,80}")||expected.trim().isEmpty()||expected.length()>1500||!Double.isFinite(target)||target<6||target>240)throw new Fault(400,"Invalid text verification request");
+        String action=AgentInk.existing(page,operation);if(action==null)throw new Fault(404,"Text operation is no longer on this page");
+        ArrayList<Ink.Stroke> selected=new ArrayList<>();float left=Float.MAX_VALUE,top=Float.MAX_VALUE,right=-Float.MAX_VALUE,bottom=-Float.MAX_VALUE,padding=2;int pointCount=0;
+        for(Ink.Stroke stroke:page.strokes)if(stroke.action.equals(action)&&page.visible(stroke)){
+            pointCount+=stroke.points.size();if(pointCount>100000||selected.size()>=2000)throw new Fault(413,"Text sample is too large to verify at once");
+            Ink.Stroke copy=stroke.copy();selected.add(copy);padding=Math.max(padding,copy.width*1.5f);
+            for(Ink.Pt point:copy.points){left=Math.min(left,point.x);right=Math.max(right,point.x);top=Math.min(top,point.y);bottom=Math.max(bottom,point.y);}
+        }
+        if(selected.isEmpty()||left==Float.MAX_VALUE||right-left<1||bottom-top<1)throw new Fault(409,"No visible handwriting was found for this operation");
+        return new TextSnapshot(a.current.id,page.id,revision(),operation,expected,(float)target,left-padding,top-padding,right+padding,bottom+padding,bottom-top,selected);
+    }
+    JSONObject verifyText(TextSnapshot snapshot)throws Exception{
+        float width=snapshot.right-snapshot.left,height=snapshot.bottom-snapshot.top;
+        if(!Float.isFinite(width)||!Float.isFinite(height)||width<=0||height<=0||width>100000||height>100000)throw new Fault(413,"Text bounds are too large to verify");
+        float scale=Math.min(4f,2400f/Math.max(width,height));int bitmapWidth=Math.max(1,Math.min(2400,Math.round(width*scale))),bitmapHeight=Math.max(1,Math.min(2400,Math.round(height*scale)));
+        Bitmap image=Bitmap.createBitmap(bitmapWidth,bitmapHeight,Bitmap.Config.ARGB_8888);
+        try{
+            Canvas canvas=new Canvas(image);canvas.drawColor(Color.WHITE);canvas.scale(scale,scale);canvas.translate(-snapshot.left,-snapshot.top);
+            for(Ink.Stroke stroke:snapshot.strokes){Ink.Stroke dark=stroke.copy();dark.color=Color.BLACK;InkRenderer.stroke(canvas,dark);}
+            OcrStudio.Recognition recognized=a.ocr.recognizeForVerification(image);
+            String text=recognized.text==null?"":recognized.text.trim();int lines=0;for(String line:text.split("\\R"))if(!AgentTextCheck.normalize(line).isEmpty())lines++;
+            if(lines==0)lines=1;float strokeHeight=snapshot.inkHeight;float perLine=strokeHeight/lines,ratio=perLine/snapshot.targetHeight;
+            boolean exact=AgentTextCheck.exact(snapshot.expected,text),readable=AgentTextCheck.readable(snapshot.expected,text,recognized.confidence),size=AgentTextCheck.sizeMatches(perLine,snapshot.targetHeight);
+            return new JSONObject().put("status",exact&&readable&&size?"pass":"review").put("operation_id",snapshot.operation).put("document_id",snapshot.document).put("page_id",snapshot.page).put("revision",snapshot.revision).put("expected_text",snapshot.expected).put("recognized_text",text).put("exact_match",exact).put("spelling_ok",exact).put("similarity",Math.round(AgentTextCheck.similarity(snapshot.expected,text)*1000)/1000.0).put("readable",readable).put("confidence_ok",recognized.confidence>=35).put("mean_confidence",recognized.confidence).put("stroke_height",Math.round(strokeHeight*1000)/1000.0).put("target_height",snapshot.targetHeight).put("estimated_lines",lines).put("size_ratio",Math.round(ratio*1000)/1000.0).put("size_ok",size).put("method","offline OCR compared with requested text; confidence below 35 or any mismatch requires visual review");
+        }finally{image.recycle();}
     }
     void ready(int generation)throws Fault{
         if(generation!=epoch||!enabled()||!a.resumed||a.isDestroyed())throw new Fault(409,"Folio connection is inactive");

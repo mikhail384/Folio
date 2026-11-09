@@ -113,8 +113,9 @@ function personalVariation(glyph,token,seed,offset,baseline){
  for(let index=0;index<characters.length;index++){
   random=seeded(seed,token,offset,`letter:${index}`);
   scalesX.push(globalX*(1-.008*variationScale+random()*.016*variationScale));
-  const roundLetter=characters[index].toLowerCase()==='о' ? .94 : 1;
-  scalesY.push(globalY*roundLetter*(.995+random()*.01*variationScale));
+  // A multi-letter sample already contains the writer's letter proportions.
+  // Guessing boundaries inside connected handwriting can deform a captured е.
+  scalesY.push(globalY*(.995+random()*.01*variationScale));
   vertical.push((random()-.5)*.012*variationScale);
   slants.push(globalSlant+(random()-.5)*.008*variationScale);
  }
@@ -140,20 +141,20 @@ function personalVariation(glyph,token,seed,offset,baseline){
  return {transform,advanceScale};
 }
 
-export function layout(text,x,y,height=28,width=2.2,color='#28344b',maxWidth=900,samples=null,variationSeed=''){
+export function layout(text,x,y,height=28,width=2.2,color='#28344b',maxWidth=900,samples=null,variationSeed='',returnMetrics=false){
  if(typeof text!=='string'||!text.length||text.length>1500||![x,y,height,width,maxWidth].every(Number.isFinite)||height<6||height>240||maxWidth<height)throw new Error('Некорректный текст или размер надписи');
- const out=[],x0=x,referenceHeight=samples?profileReferenceHeight(samples):null;
+ const out=[],tokenMetrics=[],x0=x,referenceHeight=samples?profileReferenceHeight(samples):null;
  const sampleLabels=samples?Object.keys(samples).sort((a,b)=>b.length-a.length):[];
- let i=0,points=0,spaceScale=height;
+ let i=0,points=0,spaceScale=height,lineIndex=0,wordIndex=0,inWord=false;
  while(i<text.length){
   let token=text[i],glyph;
   if(token==='\n'){
    const random=samples&&variationSeed?seeded(variationSeed,text,i,'line'):null;
-   x=x0;y+=height*(random?1.55+random()*.2:1.65);spaceScale=height;i++;continue;
+   x=x0;y+=height*(random?1.55+random()*.2:1.65);spaceScale=height;lineIndex++;inWord=false;i++;continue;
   }
   if(/\s/.test(token)){
    const random=samples&&variationSeed?seeded(variationSeed,text[i],i,'space'):null;
-   x+=spaceScale*(samples?(.38+(random?random()*.08:.04)):.65);i++;continue;
+   x+=spaceScale*(samples?(.38+(random?random()*.08:.04)):.65);inWord=false;i++;continue;
   }
   if(samples){
    token=sampleLabels.find(label=>text.startsWith(label,i));
@@ -182,19 +183,30 @@ export function layout(text,x,y,height=28,width=2.2,color='#28344b',maxWidth=900
   const variation=samples&&variationSeed?personalVariation(glyph,token,variationSeed,i,1):null;
   const advance=glyph.advance*glyphHeight*(variation?.advanceScale??1);
   if(advance>maxWidth)throw new Error('Образец шире строки');
-  if(x>x0&&x+advance>x0+maxWidth){x=x0;y+=height*1.65;spaceScale=height;}
-  for(const path of glyph.paths){
-   const renderPath=samples?roundPath(softenDensePath(trimShortHooks(path))):path;
+  if(x>x0&&x+advance>x0+maxWidth){x=x0;y+=height*1.65;spaceScale=height;lineIndex++;}
+  if(!inWord)wordIndex++;inWord=true;const currentWord=wordIndex;
+  const tokenStart=out.length;
+  const renderPaths=samples?glyph.paths.map(path=>roundPath(softenDensePath(trimShortHooks(path)))):glyph.paths;
+  let wordVerticalScale=1;
+  if(samples&&token.length>1){
+   const wordY=renderPaths.flatMap(path=>path.map(point=>(variation?variation.transform(point):point)[1]));
+   const currentHeight=(Math.max(...wordY)-Math.min(...wordY))*glyphHeight,targetHeight=height*.95;
+   if(currentHeight>targetHeight&&currentHeight>1e-6)wordVerticalScale=targetHeight/currentHeight;
+  }
+  for(const renderPath of renderPaths){
    points+=renderPath.length;
    if(out.length>=2000||points>100000)throw new Error('Разделите надпись на части');
    out.push({tool:'fountain',color,width,points:renderPath.map(point=>{
     const transformed=variation?variation.transform(point):point;
-    return [Math.round((x+transformed[0]*glyphHeight)*1000)/1000,Math.round((y+transformed[1]*glyphHeight)*1000)/1000,replayPressure(point[2])];
+    const rawY=y+transformed[1]*glyphHeight,baseline=y+height,adjustedY=baseline+(rawY-baseline)*wordVerticalScale;
+    return [Math.round((x+transformed[0]*glyphHeight)*1000)/1000,Math.round(adjustedY*1000)/1000,replayPressure(point[2])];
    })});
   }
+  if(returnMetrics){let l=Infinity,t=Infinity,r=-Infinity,b=-Infinity;for(let j=tokenStart;j<out.length;j++)for(const point of out[j].points){l=Math.min(l,point[0]);t=Math.min(t,point[1]);r=Math.max(r,point[0]);b=Math.max(b,point[1]);}if(l<Infinity)tokenMetrics.push({text:token,line:lineIndex,word:currentWord,bounds:[l,t,r,b]});}
   x+=advance;spaceScale=glyphHeight;i+=token.length;
  }
  if(!out.length)throw new Error('Пустая надпись');
+ if(returnMetrics){let l=Infinity,t=Infinity,r=-Infinity,b=-Infinity;for(const stroke of out)for(const point of stroke.points){l=Math.min(l,point[0]);t=Math.min(t,point[1]);r=Math.max(r,point[0]);b=Math.max(b,point[1]);}return {strokes:out,metrics:{text,bounds:[l,t,r,b],line_count:lineIndex+1,tokens:tokenMetrics}};}
  return out;
 }
 

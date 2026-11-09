@@ -5,12 +5,13 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from mcp import ClientSession,StdioServerParameters
 from mcp.client.stdio import stdio_client
 from handwriting import layout,sample_from_selection
+from server import _layout_validation
 
 ROOT=Path(__file__).resolve().parent
 sys.stdout.reconfigure(encoding='utf-8');sys.stderr.reconfigure(encoding='utf-8')
 PNG='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='
 class Phone(BaseHTTPRequestHandler):
-    revision=0;strokes=[{'action':'user-note','points':[[9,9]]}];requests=0
+    revision=0;strokes=[{'action':'user-note','points':[[9,9]]}];requests=0;recognized_override=None
     def log_message(self,*args):pass
     def do_POST(self):
         if self.headers.get('Authorization')!='Bearer '+'t'*43:self.send_error(401);return
@@ -35,10 +36,37 @@ class Phone(BaseHTTPRequestHandler):
                 else:
                     before=len(Phone.strokes);Phone.strokes=[s for s in Phone.strokes if s['action']!=q['operation_id']];state['removed_strokes']=before-len(Phone.strokes)
                 Phone.revision+=1;state['revision']=str(Phone.revision);state['operation_id']=q['operation_id']
+        elif self.path=='/v1/verify_text':
+            if q['document_id']!='doc' or q['page_id']!='page' or q['revision']!=str(Phone.revision) or not any(s['action']==q['operation_id'] for s in Phone.strokes):status=409;state={'error':'Text operation changed'}
+            else:
+                recognized=Phone.recognized_override or q['expected_text'];exact=recognized.lower()==q['expected_text'].lower()
+                state.update({'status':'pass' if exact else 'review','operation_id':q['operation_id'],'expected_text':q['expected_text'],'recognized_text':recognized,'exact_match':exact,'spelling_ok':exact,'similarity':1.0 if exact else .7,'readable':exact,'mean_confidence':99,'confidence_ok':True,'stroke_height':q.get('target_height',28)*.95,'target_height':q.get('target_height',28),'estimated_lines':1,'size_ratio':.95,'size_ok':True,'method':'simulated OCR response for MCP workflow tests'})
         elif self.path=='/v1/selection':state['strokes']=[{'points':[0,0,1,0,0,10,20,.7,0,0,20,0,1,0,0]}]
         data=json.dumps(state).encode();self.send_response(status);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
 
 class HandwritingTests(unittest.TestCase):
+    def test_layout_validation_checks_height_spacing_and_naturalness(self):
+        report={'line_count':1,'bounds':[0,0,52,20],'tokens':[
+            {'text':'первое','line':0,'word':1,'bounds':[0,0,20,19]},
+            {'text':'слово','line':0,'word':2,'bounds':[33,0,52,19]},
+        ]}
+        good=_layout_validation(report,20)
+        self.assertEqual(good['status'],'pass')
+        self.assertEqual(good['naturalness']['status'],'pass')
+        report['tokens'][0]['text']='2';report['tokens'][1]['text']='4'
+        self.assertTrue(_layout_validation(report,20)['size_ok'],'numeric equations retain size validation')
+        report['tokens'][0]['text']='+';report['tokens'][1]['text']='='
+        self.assertEqual(_layout_validation(report,20)['status'],'review','unmeasurable punctuation is not marked as validated')
+        report['tokens'][0]['text']='первое';report['tokens'][1]['text']='слово'
+        report['tokens'][1]['bounds']=[58,0,77,19]
+        wide=_layout_validation(report,20)
+        self.assertEqual(wide['status'],'review')
+        self.assertFalse(wide['spacing_ok'])
+        report['tokens'][1]['bounds']=[16,0,35,19]
+        overlap=_layout_validation(report,20)
+        self.assertEqual(overlap['status'],'review')
+        self.assertFalse(overlap['spacing_ok'])
+
     def test_alphabets(self):
         for char in 'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюяABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-=√π→':
             self.assertTrue(layout(char,0,0));
@@ -48,6 +76,17 @@ class HandwritingTests(unittest.TestCase):
         glyph={'advance':1,'paths':[[[0,0,1],[1,0,1]]]}
         strokes=layout('а а',0,0,20,samples={'а':glyph})
         self.assertEqual(strokes[1]['points'][0][0],28.4)
+    def test_layout_metrics_report_uniform_word_heights_and_line_count(self):
+        samples={
+            'хорошая':{'advance':1,'natural_height':40,'paths':[[[0,0,.8],[1,1,.8]]]},
+            'Проведём':{'advance':1,'natural_height':100,'paths':[[[0,0,.8],[1,1,.8]]]},
+        }
+        result=layout('хорошая Проведём\nхорошая',0,0,40,2,'#123456',900,samples,'report',True)
+        self.assertEqual(result['metrics']['line_count'],2)
+        self.assertEqual(len(result['metrics']['tokens']),3)
+        for item in result['metrics']['tokens']:
+            self.assertAlmostEqual((item['bounds'][3]-item['bounds'][1])/40,.95,places=3)
+
     def test_personal_words_keep_sampled_relative_height_and_shared_baseline(self):
         samples={
             'а':{'advance':1,'natural_height':20,'baseline_fraction':1,'paths':[[[0,0,1],[1,1,1]]]},
@@ -108,7 +147,7 @@ async def mcp_checks():
         params=StdioServerParameters(command=sys.executable,args=[str(ROOT/'server.py')],env=env)
         async with stdio_client(params) as streams:
             async with ClientSession(*streams) as client:
-                await client.initialize();tools=await client.list_tools();assert len(tools.tools)==12
+                await client.initialize();tools=await client.list_tools();assert len(tools.tools)==13
                 notebooks=await client.call_tool('folio_list_notebooks',{});assert not notebooks.isError
                 pages=await client.call_tool('folio_list_notebook_pages',{'document_id':'doc'});assert not pages.isError
                 scanned=await client.call_tool('folio_inspect_notebook_page',{'document_id':'doc','page_id':'page'});assert not scanned.isError and any(x.type=='image' for x in scanned.content)
@@ -122,7 +161,12 @@ async def mcp_checks():
                 image=await client.call_tool('folio_read_canvas',{});assert not image.isError and any(c.type=='image' for c in image.content),image
                 state=json.loads(next(c.text for c in image.content if c.type=='text'));args={'document_id':'doc','page_id':'page','revision':state['revision']}
                 result=await client.call_tool('folio_write_text',{**args,'text':'Привет, Folio!','x':30,'y':40,'operation_id':'test_operation'});assert not result.isError,result
+                validation=json.loads(result.content[0].text)['text_validation'];assert validation['status']=='pass' and validation['layout']['status']=='pass' and validation['layout']['naturalness']['status']=='pass' and validation['ocr']['exact_match'] is True
                 assert any(s['action']=='test_operation' for s in Phone.strokes)
+                Phone.recognized_override='увюличивается'
+                verify=await client.call_tool('folio_verify_text',{'expected_text':'увеличивается','operation_id':'test_operation','document_id':'doc','page_id':'page','revision':str(Phone.revision)});assert not verify.isError
+                wrong=json.loads(verify.content[0].text);assert wrong['exact_match'] is False and wrong['status']=='review' and wrong['spelling_ok'] is False
+                Phone.recognized_override=None
                 conflict=await client.call_tool('folio_write_text',{**args,'text':'Старый холст','x':30,'y':100});assert conflict.isError
                 undo=await client.call_tool('folio_undo_agent_write',{'operation_id':'test_operation','document_id':'doc','page_id':'page','revision':str(Phone.revision)});assert not undo.isError and len(Phone.strokes)==1 and Phone.strokes[0]['action']=='user-note'
                 learned=await client.call_tool('folio_learn_handwriting_sample',{'text':'я','document_id':'doc','page_id':'page'});assert not learned.isError,learned

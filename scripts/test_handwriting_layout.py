@@ -84,12 +84,36 @@ class HandwritingLayoutTests(unittest.TestCase):
         second_left=min(p[0] for p in phrase[1]['points'])
         self.assertGreater(second_left-first_right,40*.35)
 
+    def test_personal_words_with_long_stems_are_compressed_to_the_shared_height(self):
+        samples={
+            'Сегодня':{'advance':1,'natural_height':40,'paths':[[[0,0,.8],[1,1,.8]]]},
+            'функция':{'advance':1,'natural_height':40,'paths':[[[0,-.2,.8],[1,1.1,.8]]]},
+        }
+        heights=[]
+        for word in samples:
+            strokes=HANDWRITING.layout(word,0,0,40,2,'#123456',900,samples)
+            points=[point for stroke in strokes for point in stroke['points']]
+            heights.append(max(point[1] for point in points)-min(point[1] for point in points))
+        self.assertAlmostEqual(heights[0],38,places=3)
+        self.assertAlmostEqual(heights[1],38,places=3)
+
     def test_long_personal_words_get_more_horizontal_room(self):
         word='увеличивается'
         sample={word:{'advance':1.0,'natural_height':40,'paths':[[[0,0,.8],[1,1,.8]]]}}
         stroke=HANDWRITING.layout(word,0,0,40,2,'#123456',900,sample,variation_seed='long-word')[0]
         width=max(point[0] for point in stroke['points'])-min(point[0] for point in stroke['points'])
         self.assertGreater(width,40*1.14)
+
+    def test_personal_e_in_a_connected_word_keeps_its_captured_shape(self):
+        word='ае'
+        sample={word:{'advance':1,'paths':[
+            [[0,0,.8],[.25,1,.8],[.5,0,.8]],
+            [[.5,0,.8],[.75,1,.8],[1,0,.8]],
+        ]}}
+        strokes=HANDWRITING.layout(word,0,0,28,2,'#123456',900,sample,variation_seed='e-shape')
+        heights=[max(p[1] for p in stroke['points'])-min(p[1] for p in stroke['points']) for stroke in strokes]
+        self.assertEqual(len(heights),2)
+        self.assertAlmostEqual(heights[1]/heights[0],1,delta=.03)
 
     def test_samples_from_different_canvas_scales_cannot_blow_up_or_shrink_a_word(self):
         path=[[[0,0,.8],[1,1,.8]]]
@@ -99,8 +123,8 @@ class HandwritingLayoutTests(unittest.TestCase):
         }
         small=HANDWRITING.layout('хорошая',0,0,40,2,'#123456',900,samples)[0]['points']
         tall=HANDWRITING.layout('Проведём',0,0,40,2,'#123456',900,samples)[0]['points']
-        self.assertAlmostEqual(small[1][1]-small[0][1],38.4,places=3)
-        self.assertAlmostEqual(tall[1][1]-tall[0][1],41.6,places=3)
+        self.assertAlmostEqual(small[1][1]-small[0][1],38,places=3)
+        self.assertAlmostEqual(tall[1][1]-tall[0][1],38,places=3)
 
 
 if __name__=='__main__':

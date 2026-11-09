@@ -226,8 +226,9 @@ def _personal_variation(glyph,token,seed,offset,baseline_fraction):
     for index in range(len(characters)):
         rng=_seeded_random(seed,token,offset,'letter:'+str(index))
         widths.append(global_x*(1-.008*variation_scale+rng.random()*.016*variation_scale))
-        round_letter=.94 if characters[index].lower()=='о' else 1.0
-        heights.append(global_y*round_letter*(.995+rng.random()*.01*variation_scale))
+        # A multi-letter sample already contains the writer's letter proportions.
+        # Guessing boundaries inside connected handwriting can deform a captured е.
+        heights.append(global_y*(.995+rng.random()*.01*variation_scale))
         vertical.append((rng.random()-.5)*.012*variation_scale)
         slants.append(global_slant+(rng.random()-.5)*.008*variation_scale)
     edge_offsets=[0.0]
@@ -255,21 +256,21 @@ def _personal_variation(glyph,token,seed,offset,baseline_fraction):
 
     return transform,advance_scale
 
-def layout(text,x,y,height=28,width=2.2,color='#28344b',max_width=900,samples=None,variation_seed=''):
+def layout(text,x,y,height=28,width=2.2,color='#28344b',max_width=900,samples=None,variation_seed='',return_metrics=False):
     if not text or len(text)>1500: raise ValueError('Текст должен содержать 1–1500 символов')
     if not all(math.isfinite(v) for v in [x,y,height,width,max_width]) or not 6<=height<=240 or max_width<height: raise ValueError('Некорректный размер надписи')
     if samples is not None and not samples: raise ValueError('Личный почерк ещё не содержит образцов')
-    x0=x;result=[];i=0;space_scale=height;line_baseline=y+height
+    x0=x;result=[];token_metrics=[];line_index=0;word_index=0;in_word=False;i=0;space_scale=height;line_baseline=y+height
     reference_height=_profile_reference_height(samples) if samples is not None else None
     while i<len(text):
         if text[i]=='\n':
             line_rng=_seeded_random(variation_seed,text,i,'line') if samples is not None and variation_seed else None
             line_gap=1.55+line_rng.random()*.2 if line_rng else 1.65
-            x=x0;y+=height*line_gap;line_baseline=y+height;i+=1;continue
+            x=x0;y+=height*line_gap;line_baseline=y+height;line_index+=1;in_word=False;i+=1;continue
         if text[i].isspace():
             gap_rng=_seeded_random(variation_seed,text[i],i,'space') if samples is not None and variation_seed else None
             gap=.38+(gap_rng.random()*.08 if gap_rng else .04) if samples is not None else .65
-            x+=space_scale*gap;i+=1;continue
+            x+=space_scale*gap;in_word=False;i+=1;continue
         if samples is None: token=text[i];glyph=builtin(token)
         else:
             token=next((k for k in sorted(samples,key=len,reverse=True) if text.startswith(k,i)),None)
@@ -286,7 +287,9 @@ def layout(text,x,y,height=28,width=2.2,color='#28344b',max_width=900,samples=No
             glyph_height=height*ratio
         advance=glyph['advance']*glyph_height
         if advance>max_width:raise ValueError('Образец шире строки; уменьшите высоту или увеличьте max_width')
-        if x>x0 and x+advance>x0+max_width:x=x0;y+=height*1.65;line_baseline=y+height
+        if x>x0 and x+advance>x0+max_width:x=x0;y+=height*1.65;line_baseline=y+height;line_index+=1
+        if not in_word:word_index+=1;in_word=True
+        current_word=word_index
         glyph_y=y
         if samples is not None:
             baseline_fraction=glyph.get('baseline_fraction',1)
@@ -298,15 +301,30 @@ def layout(text,x,y,height=28,width=2.2,color='#28344b',max_width=900,samples=No
         advance_scale=1
         if samples is not None:
             variation,advance_scale=varied if varied is not None else (None,1)
-        for path in glyph['paths']:
-            render_path=_round_path(_soften_dense_path(_trim_short_hooks(path))) if samples is not None else path
+        token_start=len(result)
+        render_paths=[_round_path(_soften_dense_path(_trim_short_hooks(path))) for path in glyph['paths']] if samples is not None else glyph['paths']
+        word_vertical_scale=1.0
+        if samples is not None and len(token)>1:
+            word_y=[variation(path_point)[1] if variation is not None else path_point[1] for path in render_paths for path_point in path]
+            current_height=(max(word_y)-min(word_y))*glyph_height if word_y else 0
+            target_height=height*.95
+            if current_height>target_height and current_height>1e-6:word_vertical_scale=target_height/current_height
+        for render_path in render_paths:
             if len(result)>=2000 or sum(len(s['points']) for s in result)+len(render_path)>100000:raise ValueError('Надпись слишком большая; разделите её на части')
             points=[]
             for p in render_path:
                 if variation is not None:px,py,_=variation(p)
                 else:px,py=p[0],p[1]
-                points.append([round(x+px*glyph_height,3),round(glyph_y+py*glyph_height,3),_replay_pressure(p[2] if len(p)>2 else None)])
+                point_y=glyph_y+py*glyph_height
+                point_y=line_baseline+(point_y-line_baseline)*word_vertical_scale
+                points.append([round(x+px*glyph_height,3),round(point_y,3),_replay_pressure(p[2] if len(p)>2 else None)])
             result.append({'tool':'fountain','color':color,'width':width,'points':points})
+        if return_metrics:
+            token_points=[point for stroke in result[token_start:] for point in stroke['points']]
+            if token_points:token_metrics.append({'text':token,'line':line_index,'word':current_word,'bounds':[min(p[0] for p in token_points),min(p[1] for p in token_points),max(p[0] for p in token_points),max(p[1] for p in token_points)]})
         x+=advance*advance_scale;space_scale=glyph_height;i+=len(token)
     if not result or len(result)>2000 or sum(len(s['points']) for s in result)>100000:raise ValueError('Надпись слишком большая; разделите её на части')
+    if return_metrics:
+        all_points=[point for stroke in result for point in stroke['points']]
+        return {'strokes':result,'metrics':{'text':text,'bounds':[min(p[0] for p in all_points),min(p[1] for p in all_points),max(p[0] for p in all_points),max(p[1] for p in all_points)],'line_count':line_index+1,'tokens':token_metrics}}
     return result
