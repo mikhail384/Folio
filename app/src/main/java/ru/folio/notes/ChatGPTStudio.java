@@ -40,7 +40,9 @@ final class ChatGPTStudio {
 
     private static final class Message {
         final String role,text,image;
-        Message(String role,String text,String image){this.role=role;this.text=text;this.image=image;}
+        final boolean localCanvasAction;
+        Message(String role,String text,String image){this(role,text,image,false);}
+        Message(String role,String text,String image,boolean localCanvasAction){this.role=role;this.text=text;this.image=image;this.localCanvasAction=localCanvasAction;}
     }
 
     private static final class Window {
@@ -75,7 +77,7 @@ final class ChatGPTStudio {
             switchAccountButton=Studio.button(a,"Выбрать аккаунт ChatGPT",false,this::switchAccount);switchAccountButton.setTextSize(10);LinearLayout.LayoutParams switchLp=new LinearLayout.LayoutParams(-2,-2);switchLp.topMargin=a.dp(4);root.addView(switchAccountButton,switchLp);
 
             LinearLayout mode=a.row();mode.setGravity(Gravity.CENTER_VERTICAL);a.pad(mode,12,9);mode.setBackground(Studio.surface(Studio.CARD,16,a.getResources().getDisplayMetrics().density));
-            LinearLayout modeText=a.column();modeText.addView(a.text("Писать ответы на холст",13,Studio.TEXT,true));TextView modeHint=a.text("Выкл. — ответ в окне · вкл. — на странице",10,Studio.MUTED,false);LinearLayout.LayoutParams mh=new LinearLayout.LayoutParams(-1,-2);mh.topMargin=a.dp(3);modeText.addView(modeHint,mh);mode.addView(modeText,new LinearLayout.LayoutParams(0,-2,1));
+            LinearLayout modeText=a.column();modeText.addView(a.text("Писать ответы на холст",13,Studio.TEXT,true));TextView modeHint=a.text("Выкл. — ответ здесь · вкл. — на странице. «Напиши на холсте…» срабатывает отдельно.",10,Studio.MUTED,false);modeHint.setLineSpacing(a.dp(2),1);LinearLayout.LayoutParams mh=new LinearLayout.LayoutParams(-1,-2);mh.topMargin=a.dp(3);modeText.addView(modeHint,mh);mode.addView(modeText,new LinearLayout.LayoutParams(0,-2,1));
             writeOnCanvas=new Studio.Toggle(a,a.prefs.getBoolean("chatgpt_canvas_output",false),on->{a.prefs.edit().putBoolean("chatgpt_canvas_output",on).apply();if(handwritingOnCanvas!=null){handwritingOnCanvas.setEnabled(on&&a.canvas!=null&&a.canvas.page!=null);if(on&&handwritingOnCanvas.checked)ensureHandwritingModel();}});
             writeOnCanvas.setEnabled(a.canvas!=null&&a.canvas.page!=null);mode.addView(writeOnCanvas,new LinearLayout.LayoutParams(a.dp(50),a.dp(44)));root.addView(mode);
             LinearLayout.LayoutParams mp=(LinearLayout.LayoutParams)mode.getLayoutParams();mp.topMargin=a.dp(9);mode.setLayoutParams(mp);
@@ -162,6 +164,15 @@ final class ChatGPTStudio {
 
         void send(){
             if(sending)return;String question=input.getText().toString().trim();if(question.isEmpty()){input.setError("Напишите вопрос");input.requestFocus();return;}
+            CanvasWriteCommand.Parsed canvasCommand=CanvasWriteCommand.parse(question,lastAssistantText());
+            if(canvasCommand!=null){
+                if(canvasCommand.text.trim().isEmpty()){input.setError("Напишите текст для холста или сначала получите ответ ChatGPT");input.requestFocus();return;}
+                if(a.canvas==null||a.canvas.page==null){connectionHint.setText("Откройте тетрадь Folio, чтобы записать текст на холст.");return;}
+                if(!a.canvas.page.writable()){connectionHint.setText("Выберите незаблокированный слой, чтобы записать текст.");return;}
+                boolean personal=a.prefs.getBoolean("chatgpt_personal_handwriting",false);
+                if(personal&&(handwritingLoading||handwritingModel==null)){if(!handwritingLoading)ensureHandwritingModel();connectionHint.setText("Загружаем профиль почерка. Повторите команду через секунду.");return;}
+                executeCanvasCommand(question,canvasCommand,personal);return;
+            }
             if(a.prefs.getBoolean("chatgpt_canvas_output",false)&&handwritingOnCanvas.checked){if(handwritingLoading){connectionHint.setText("Профиль почерка ещё загружается. Подождите немного и отправьте запрос ещё раз.");return;}if(handwritingModel==null){ensureHandwritingModel();connectionHint.setText("Загружаем профиль почерка. Отправьте запрос ещё раз через секунду.");return;}}
             ChatGPTAuth.Account account=ChatGPTAuth.account(a);if(account==null||!account.canUsePlan()){connectionHint.setText("Сначала подключите ChatGPT и подтвердите доступ к плану.");return;}
             if(selectedModel.isEmpty()){connectionHint.setText("Подождите, пока загрузится список моделей.");loadConnection();return;}
@@ -175,6 +186,17 @@ final class ChatGPTStudio {
             new Thread(()->request(model,requestHistory),"folio-chatgpt-response").start();
         }
 
+        String lastAssistantText(){for(int i=HISTORY.size()-1;i>=0;i--){Message message=HISTORY.get(i);if(!message.role.equals("assistant")||message.localCanvasAction)continue;String text=message.text.trim();if(text.isEmpty())continue;String lower=text.toLowerCase(java.util.Locale.ROOT);if(lower.contains("не могу управлять folio")||lower.contains("не могу рисовать")||lower.contains("can't control folio")||lower.contains("cannot draw on this canvas"))continue;return text;}return "";}
+
+        void executeCanvasCommand(String question,CanvasWriteCommand.Parsed command,boolean personal){
+            input.setText("");input.clearFocus();try{((InputMethodManager)a.getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(input.getWindowToken(),0);}catch(Exception ignored){}
+            HISTORY.add(new Message("user",question,null));addBubble("user",question,null);
+            String response;
+            if(writeToCanvas(command.text,personal)){response=command.reusedPrevious?"Перенёс предыдущий ответ на холст.":"Записал текст на холст.";connectionHint.setText("Команда выполнена непосредственно в Folio.");}
+            else {response=canvasWriteFailure.isEmpty()?"Не удалось записать текст на холст.":canvasWriteFailure;connectionHint.setText(response);}
+            addBubble("assistant",response,null);HISTORY.add(new Message("assistant",response,null,true));
+        }
+
         TextView addBubble(String role,String text,String image){
             LinearLayout bubble=a.column();a.pad(bubble,12,10);boolean user=role.equals("user");bubble.setBackground(Studio.surface(user?0xff383448:Studio.CARD,16,a.getResources().getDisplayMetrics().density));
             TextView who=a.text(user?"ВЫ":"CHATGPT",9,user?Studio.ACCENT:Studio.MUTED,true);who.setLetterSpacing(.08f);bubble.addView(who);
@@ -186,7 +208,7 @@ final class ChatGPTStudio {
         void request(String model,List<Message> history){
             StringBuilder answer=new StringBuilder();boolean completed=false;HttpURLConnection con=null;
             try{
-                JSONObject body=new JSONObject();body.put("model",model);body.put("store",false);body.put("stream",true);JSONArray input=new JSONArray();
+                JSONObject body=new JSONObject();body.put("model",model);body.put("instructions",a.prefs.getBoolean("chatgpt_canvas_output",false)?"You are ChatGPT inside Folio. The app can place your final answer on the currently open Folio canvas when canvas output is enabled. Never claim you cannot control Folio or write on the canvas. When the user asks for exact text to be written, respond with only that text unless they ask for an explanation; the app will perform the insertion after the answer. Do not claim the text was inserted before the app confirms it.":"You are ChatGPT inside Folio. Canvas output is currently off, but the app can write on the open Folio page when the user explicitly asks. Never claim you cannot control Folio or write on its canvas. Answer normally unless the user asks for a direct canvas action; in that case, provide only the requested text and do not claim it was inserted." );body.put("store",false);body.put("stream",true);JSONArray input=new JSONArray();
                 for(Message message:history){JSONObject item=new JSONObject().put("role",message.role);if(message.image!=null&&!message.image.isEmpty()){JSONArray content=new JSONArray();content.put(new JSONObject().put("type","input_text").put("text",message.text));content.put(new JSONObject().put("type","input_image").put("image_url",message.image));item.put("content",content);}else item.put("content",message.text);input.put(item);}body.put("input",input);
                 con=(HttpURLConnection)new URL(RESPONSES).openConnection();con.setRequestMethod("POST");con.setConnectTimeout(25000);con.setReadTimeout(120000);con.setDoOutput(true);con.setUseCaches(false);con.setRequestProperty("Authorization","Bearer "+ChatGPTAuth.accessToken(a));con.setRequestProperty("Content-Type","application/json; charset=utf-8");con.setRequestProperty("Accept","text/event-stream");con.setRequestProperty("Cache-Control","no-store");byte[] bytes=body.toString().getBytes(StandardCharsets.UTF_8);con.setFixedLengthStreamingMode(bytes.length);try(java.io.OutputStream out=con.getOutputStream()){out.write(bytes);}
                 int status=con.getResponseCode();if(status<200||status>=300){String error=ChatGPTAuth.readUtf8(con.getErrorStream(),1024*1024);throw ChatGPTAuth.httpError(status,error);}
