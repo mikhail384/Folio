@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Калькулятор дробей</string>
+
+    <string name="first_fraction">Первая дробь</string>
+    <string name="second_fraction">Вторая дробь</string>
+    <string name="whole_part">Целая</string>
+    <string name="numerator">Числитель</string>
+    <string name="denominator">Знаменатель</string>
+    <string name="sign_positive">Знак дроби: плюс</string>
+    <string name="sign_negative">Знак дроби: минус</string>
+
+    <string name="op_add">Сложение</string>
+    <string name="op_subtract">Вычитание</string>
+    <string name="op_multiply">Умножение</string>
+    <string name="op_divide">Деление</string>
+
+    <string name="result">Результат</string>
+    <string name="hint_fill_both">Заполните обе дроби</string>
+    <string name="mixed_number">Смешанное число: %1$s</string>
+    <string name="decimal_value">Десятичная дробь: %1$s</string>
+    <string name="error_zero_denominator_first">Знаменатель первой дроби не может быть нулём</string>
+    <string name="error_zero_denominator_second">Знаменатель второй дроби не может быть нулём</string>
+    <string name="error_division_by_zero">На ноль делить нельзя</string>
+    <string name="clear">Очистить</string>
+</resources>
